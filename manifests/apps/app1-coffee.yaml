@@ -1,0 +1,83 @@
+# ============================================================
+# Sample App 1: Coffee (v1)
+# ------------------------------------------------------------
+# Simple NGINX-based web app that returns "coffee" responses.
+# Used to demonstrate basic ingress routing through the
+# BIG-IP → NGINX IC → App pipeline.
+#
+# Includes: Deployment, Service, and Ingress
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coffee
+  namespace: default
+  labels:
+    app: coffee
+    version: v1
+spec:
+  replicas: 2                          # Two pods for availability
+  selector:
+    matchLabels:
+      app: coffee
+  template:
+    metadata:
+      labels:
+        app: coffee
+        version: v1
+    spec:
+      containers:
+        - name: coffee
+          image: nginxdemos/nginx-hello:plain-text
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+---
+
+# Service exposes the coffee pods inside the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: coffee-svc
+  namespace: default
+spec:
+  selector:
+    app: coffee
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+
+---
+
+# Ingress tells NGINX IC how to route traffic to this app
+# Requests to /coffee go to the coffee-svc service
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: coffee-ingress
+  namespace: default
+  annotations:
+    # Optional: add NGINX-specific annotations here
+    # nginx.org/lb-method: "round_robin"
+spec:
+  ingressClassName: nginx              # Must match NGINX IC IngressClass
+  rules:
+    - host: cafe.example.com           # Hostname for routing
+      http:
+        paths:
+          - path: /coffee
+            pathType: Prefix
+            backend:
+              service:
+                name: coffee-svc
+                port:
+                  number: 80

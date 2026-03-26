@@ -1,0 +1,36 @@
+# ============================================================
+# IngressLink Resource — Ties BIG-IP VIP to NGINX IC
+# ------------------------------------------------------------
+# This is the "bridge" between NetOps and DevOps:
+#
+#   - virtualServerAddress: the VIP that NetOps created on
+#     BIG-IP (or will be auto-created by CIS in the partition)
+#   - selector.matchLabels: finds the NGINX IC service so CIS
+#     knows which pods to add as BIG-IP pool members
+#
+# When CIS sees this resource, it creates (or updates) a
+# Virtual Server on BIG-IP with a pool pointing to all
+# NGINX IC pod IPs on port 80/443.
+#
+# *** EDIT virtualServerAddress TO MATCH YOUR BIG-IP VIP ***
+# ============================================================
+
+apiVersion: cis.f5.com/v1
+kind: IngressLink
+metadata:
+  name: nginx-ingress-link
+  namespace: nginx-ingress             # Same namespace as NGINX IC
+spec:
+  # ---------------------------------------------------------
+  # VIP address on BIG-IP — this is the external IP clients
+  # will hit. Must be routable from the internet/client network.
+  # ---------------------------------------------------------
+  virtualServerAddress: "10.1.10.100"  # ← Your BIG-IP VIP address
+
+  # ---------------------------------------------------------
+  # Label selector — must match the NGINX IC service/pods.
+  # The Helm chart labels pods with app.kubernetes.io/name.
+  # ---------------------------------------------------------
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-ingress

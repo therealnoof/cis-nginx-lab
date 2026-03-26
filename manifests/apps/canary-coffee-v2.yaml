@@ -1,0 +1,99 @@
+# ============================================================
+# Canary Deployment: Coffee v2
+# ------------------------------------------------------------
+# Demonstrates canary deployments managed by DevOps while the
+# BIG-IP VIP stays completely stable (NetOps doesn't touch
+# anything).
+#
+# How it works:
+#   1. Deploy coffee-v2 alongside coffee (v1)
+#   2. Use NGINX IC annotations to split traffic (e.g., 90/10)
+#   3. Gradually shift traffic to v2
+#   4. BIG-IP VIP, WAF, and pool stay unchanged throughout
+#
+# The canary annotations on the Ingress tell NGINX IC to
+# split a percentage of /coffee traffic to coffee-v2-svc.
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coffee-v2
+  namespace: default
+  labels:
+    app: coffee
+    version: v2                        # Label distinguishes v1 from v2
+spec:
+  replicas: 1                          # Start with fewer replicas for canary
+  selector:
+    matchLabels:
+      app: coffee-v2
+  template:
+    metadata:
+      labels:
+        app: coffee-v2
+        version: v2
+    spec:
+      containers:
+        - name: coffee-v2
+          # Same image, different env var to show which version responds
+          image: nginxdemos/nginx-hello:plain-text
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_VERSION
+              value: "v2"              # Shows up in response headers
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: coffee-v2-svc
+  namespace: default
+spec:
+  selector:
+    app: coffee-v2
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+
+---
+
+# Canary Ingress — routes a percentage of /coffee traffic to v2
+# NGINX IC canary annotations control the traffic split
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: coffee-v2-canary
+  namespace: default
+  annotations:
+    # ---------------------------------------------------------
+    # Canary annotations — NGINX IC evaluates these to decide
+    # whether to send traffic to the canary backend
+    # ---------------------------------------------------------
+    nginx.org/mergeable-ingress-type: "minion"
+    # For weight-based canary with NGINX IC, you can use
+    # the VirtualServer CRD instead (shown in DEMO_GUIDE.md)
+    # or adjust replica counts for a simple ratio
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: cafe.example.com
+      http:
+        paths:
+          - path: /coffee
+            pathType: Prefix
+            backend:
+              service:
+                name: coffee-v2-svc
+                port:
+                  number: 80

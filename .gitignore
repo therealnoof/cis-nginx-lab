@@ -1,0 +1,33 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Secrets — never commit these
+*-secret.yaml
+*.key
+*.crt
+*.pem
+nginx-repo.*
+jwt-token
+
+# Helm
+charts/
+*.tgz
+
+# Terraform (if added later)
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Misc
+*.log
+*.bak
+*.tmp

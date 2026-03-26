@@ -1,0 +1,44 @@
+# ============================================================
+# WAF Policy CRD — References a BIG-IP ASM/AWAF Policy
+# ------------------------------------------------------------
+# This CRD tells CIS to attach a WAF policy (that NetOps
+# already created on BIG-IP) to the virtual server.
+#
+# How the two-persona model works here:
+#   NetOps: Creates and manages the WAF policy on BIG-IP via
+#           GUI (Security → Application Security → Policies)
+#   DevOps: References the policy NAME in this YAML — DevOps
+#           doesn't need to know WAF internals
+#   CIS:    Reads this CRD and attaches the policy to the VS
+#
+# The WAF policy name below must match exactly what NetOps
+# created on BIG-IP (case-sensitive, including the partition).
+# ============================================================
+
+apiVersion: cis.f5.com/v1
+kind: Policy
+metadata:
+  name: waf-policy
+  namespace: nginx-ingress
+  labels:
+    app: waf-policy
+spec:
+  # ---------------------------------------------------------
+  # L7 (HTTP) policy settings
+  # ---------------------------------------------------------
+  l7Policies:
+    waf: "/Common/linux-high"          # ← WAF policy path on BIG-IP
+                                       #   Format: /Partition/PolicyName
+                                       #   "linux-high" is a built-in ASM
+                                       #   template — good for demos
+                                       #   NetOps can swap this to a custom
+                                       #   policy at any time
+
+  # ---------------------------------------------------------
+  # Profiles — attach additional BIG-IP profiles to the VS
+  # ---------------------------------------------------------
+  profiles:
+    tcp: /Common/f5-tcp-progressive    # Optimized TCP profile
+    http: /Common/http                 # Standard HTTP profile (required for WAF)
+    logProfiles:
+      - /Common/Log all requests       # Logs all requests (useful for demo)

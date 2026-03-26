@@ -1,0 +1,92 @@
+# ============================================================
+# CIS RBAC — ServiceAccount, ClusterRole, and ClusterRoleBinding
+# ------------------------------------------------------------
+# CIS needs broad read access to K8s resources (Services,
+# Endpoints, Nodes, Secrets, ConfigMaps) plus write access to
+# its own CRDs. This RBAC config grants those permissions.
+# ============================================================
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bigip-ctlr                    # Service account CIS runs as
+  namespace: kube-system              # CIS lives in kube-system
+
+---
+
+# ClusterRole: defines WHAT CIS is allowed to do cluster-wide
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bigip-ctlr-clusterrole
+rules:
+  # Read services, endpoints, nodes — CIS needs these to build
+  # BIG-IP pool member lists automatically
+  - apiGroups: ["", "extensions", "networking.k8s.io"]
+    resources:
+      - nodes
+      - services
+      - endpoints
+      - namespaces
+      - ingresses
+      - pods
+    verbs: ["get", "list", "watch"]
+
+  # Read secrets — CIS reads the BIG-IP login secret and TLS secrets
+  - apiGroups: [""]
+    resources:
+      - secrets
+    verbs: ["get", "list", "watch"]
+
+  # Events — CIS writes events to record what it did
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["get", "list", "watch", "create", "patch"]
+
+  # CIS custom resources — IngressLink, VirtualServer, etc.
+  - apiGroups: ["cis.f5.com"]
+    resources:
+      - virtualservers
+      - virtualservers/status
+      - tlsprofiles
+      - transportservers
+      - transportservers/status
+      - ingresslinks
+      - externaldnss
+      - policies
+    verbs: ["get", "list", "watch", "update", "patch"]
+
+  # Ingress status updates
+  - apiGroups: ["", "extensions", "networking.k8s.io"]
+    resources:
+      - ingresses/status
+    verbs: ["get", "list", "watch", "update", "patch"]
+
+  # ConfigMaps — CIS uses these for leader election
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Coordination for leader election (K8s 1.20+)
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+
+# ClusterRoleBinding: connects the ServiceAccount to the ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bigip-ctlr-clusterrole-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bigip-ctlr-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: bigip-ctlr
+    namespace: kube-system

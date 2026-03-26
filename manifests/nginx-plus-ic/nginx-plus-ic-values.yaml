@@ -1,0 +1,62 @@
+# ============================================================
+# NGINX Plus Ingress Controller — Helm Values
+# ------------------------------------------------------------
+# These values override the defaults in the NGINX IC Helm chart.
+# Used with:
+#   helm install nginx-ingress oci://ghcr.io/nginx/charts/nginx-ingress \
+#     --namespace nginx-ingress --create-namespace \
+#     -f nginx-plus-ic-values.yaml
+#
+# Key decisions for this lab:
+#   - NGINX Plus (not OSS) — required for IngressLink support
+#   - ClusterIP service type — BIG-IP VIP handles external access
+#   - IngressClass name "nginx" — apps reference this in their Ingress
+#   - App Protect WAF disabled — WAF is on BIG-IP in this lab
+# ============================================================
+
+controller:
+  # ---------------------------------------------------------
+  # Use NGINX Plus image (requires JWT license — see Step 3
+  # in DEPLOYMENT_GUIDE.md for how to set up the registry secret)
+  # ---------------------------------------------------------
+  image:
+    repository: private-registry.nginx.com/nginx-ic/nginx-plus-ingress
+    tag: 4.0.0                         # Check for latest at docs.nginx.com
+    pullPolicy: IfNotPresent
+
+  # Pull secret for the NGINX Plus private registry
+  serviceAccount:
+    imagePullSecretName: nginx-registry-secret
+
+  nginxplus: true                       # Enable NGINX Plus features
+
+  # ---------------------------------------------------------
+  # Service type: ClusterIP
+  # CIS/IngressLink manages the external VIP on BIG-IP,
+  # so we do NOT need NodePort or LoadBalancer here.
+  # ---------------------------------------------------------
+  service:
+    type: ClusterIP
+
+  # IngressClass settings
+  ingressClass:
+    name: nginx                        # Apps use this in their Ingress spec
+    create: true
+    setAsDefaultIngressClass: true     # Convenience for the lab
+
+  # Resource requests/limits for the IC pod
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+
+  # Enable Prometheus metrics endpoint (useful for dashboards later)
+  enableLatencyMetrics: true
+
+  # ---------------------------------------------------------
+  # Logging — increase to debug if troubleshooting routing
+  # ---------------------------------------------------------
+  logLevel: 1                          # 1=info, 3=debug

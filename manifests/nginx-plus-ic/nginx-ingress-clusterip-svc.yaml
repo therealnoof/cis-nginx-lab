@@ -1,0 +1,31 @@
+# ============================================================
+# NGINX Plus IC ClusterIP Service
+# ------------------------------------------------------------
+# This is the service that CIS/IngressLink points the BIG-IP
+# pool at. The label selector must match NGINX IC pods.
+#
+# NOTE: If you installed NGINX IC via Helm with the values
+# file, Helm already creates this service. This manifest is
+# here as a reference / for manual installs.
+# ============================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ingress-controller
+  namespace: nginx-ingress
+  labels:
+    app: nginx-ingress                 # CIS uses this label to find IC pods
+spec:
+  type: ClusterIP                      # No external port — BIG-IP is the front door
+  selector:
+    app.kubernetes.io/name: nginx-ingress   # Must match NGINX IC pod labels
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP

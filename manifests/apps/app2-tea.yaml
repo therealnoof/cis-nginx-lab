@@ -1,0 +1,78 @@
+# ============================================================
+# Sample App 2: Tea
+# ------------------------------------------------------------
+# Second sample app to demonstrate that DevOps can deploy new
+# services that go live IMMEDIATELY through the existing
+# BIG-IP VIP — no ticket, no BIG-IP change needed.
+#
+# This is the "aha moment" in the demo: deploy tea, and it's
+# reachable through the same VIP within seconds.
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tea
+  namespace: default
+  labels:
+    app: tea
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tea
+  template:
+    metadata:
+      labels:
+        app: tea
+    spec:
+      containers:
+        - name: tea
+          image: nginxdemos/nginx-hello:plain-text
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: tea-svc
+  namespace: default
+spec:
+  selector:
+    app: tea
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+
+---
+
+# Ingress for tea — same host, different path
+# NGINX IC routes /tea to tea-svc, /coffee to coffee-svc
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tea-ingress
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: cafe.example.com
+      http:
+        paths:
+          - path: /tea
+            pathType: Prefix
+            backend:
+              service:
+                name: tea-svc
+                port:
+                  number: 80
