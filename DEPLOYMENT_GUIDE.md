@@ -139,15 +139,67 @@ tmsh save sys config
 
 > **Why?** Flannel uses VXLAN to encapsulate pod traffic. BIG-IP needs a tunnel endpoint in the same VXLAN so it can send traffic directly to pod IPs (not just node IPs). The self-IP `10.244.255.254` is an unused address in the pod CIDR range.
 
-**On the Kubernetes node**, create a BIG-IP node entry so Flannel knows about the tunnel:
+### 2e. Ensure K8s Node Is on BIG-IP Internal Network
+
+The VXLAN tunnel requires the K8s node and BIG-IP's tunnel `local-address` to be on the **same L2 network**. BIG-IP's tunnel runs on the data plane (TMM), not the management interface — so the K8s node must have an interface on the same subnet as BIG-IP's internal self-IP.
 
 ```bash
-# Get the BIG-IP VTEP MAC address
-# On BIG-IP: tmsh show net tunnels tunnel flannel_vxlan all-properties
-# Look for the MAC address field
+# Check if the K8s node can reach BIG-IP's internal self-IP
+ping -c 3 10.1.20.10
 
-# Create the BIG-IP node annotation in K8s
-cat <<EOF | kubectl apply -f -
+# If ping fails, the K8s node needs an IP on the 10.1.20.0/24 network.
+# If the node has a second NIC (e.g., ens6), assign it an IP:
+
+tee /etc/netplan/60-internal.yaml > /dev/null << 'NETEOF'
+network:
+  version: 2
+  ethernets:
+    ens6:
+      addresses:
+        - 10.1.20.20/24
+NETEOF
+
+chmod 600 /etc/netplan/60-internal.yaml
+netplan apply
+
+# Verify
+ping -c 3 10.1.20.10
+```
+
+> **Important:** If your K8s node has multiple NICs, Flannel must use the interface on the BIG-IP internal network for VXLAN. Update the Flannel DaemonSet to specify the interface:
+
+```bash
+kubectl edit daemonset -n kube-flannel kube-flannel-ds
+
+# Find the kube-flannel container args and add --iface=ens6:
+#   args:
+#     - --ip-masq
+#     - --kube-subnet-mgr
+#     - --iface=ens6
+```
+
+After saving, Flannel will restart and begin using the internal network for VXLAN encapsulation.
+
+### 2f. Create BIG-IP Node in Kubernetes
+
+Create a K8s node entry for BIG-IP so Flannel knows about the VXLAN tunnel endpoint.
+
+**First, get the BIG-IP VTEP MAC address:**
+
+```bash
+# On BIG-IP CLI:
+tmsh show net tunnels tunnel flannel_vxlan all-properties | grep -i mac
+
+# Example output:
+# MAC Address    02:1c:aa:c6:9a:3c
+```
+
+> **Critical:** The MAC address in the K8s node annotation below **must exactly match** the MAC shown by BIG-IP. If they don't match, the VXLAN tunnel won't pass traffic and BIG-IP pool members will show as down.
+
+**Then create the node on the K8s server:**
+
+```bash
+kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: Node
 metadata:
@@ -162,18 +214,24 @@ spec:
 EOF
 ```
 
-> Replace `<BIG-IP-VTEP-MAC>` with the actual MAC address and `10.1.20.10` with your BIG-IP internal self-IP.
+> Replace `<BIG-IP-VTEP-MAC>` with the actual MAC address from the step above. Replace `10.1.20.10` with your BIG-IP internal self-IP.
 
-### 2e. Verify Network Connectivity
+### 2g. Verify VXLAN Tunnel Connectivity
 
 ```bash
 # From the K8s node, verify you can reach BIG-IP management API
-# Use the MANAGEMENT IP (10.1.1.4), not the internal self-IP (10.1.20.10)
-# BIG-IP REST API requires authentication (-u flag)
 curl -sk -u admin:YOUR_PASSWORD https://10.1.1.4/mgmt/tm/sys/version | python3 -m json.tool
 
-# You should see BIG-IP version info in the JSON response
-# If you get "Expecting value" error, you're hitting the wrong IP or missing -u creds
+# Verify BIG-IP can ping a pod IP (run on BIG-IP CLI)
+# First get a pod IP: kubectl get pods -o wide
+# Then on BIG-IP:
+#   tmsh run util ping -c 3 <POD_IP>
+#
+# If ping fails, check:
+#   1. K8s node is on the same subnet as BIG-IP tunnel local-address
+#   2. Flannel is using the correct interface (--iface flag)
+#   3. VTEP MAC in K8s node annotation matches BIG-IP tunnel MAC
+#   4. BIG-IP FDB has entry: tmsh show net fdb tunnel flannel_vxlan
 ```
 
 ### 2f. Create CIS Shared Resources
