@@ -53,9 +53,6 @@ controller:
       cpu: 1
       memory: 1Gi
 
-  # Enable Prometheus metrics endpoint (useful for dashboards later)
-  enableLatencyMetrics: true
-
   # ---------------------------------------------------------
   # Logging — increase to debug if troubleshooting routing
   # ---------------------------------------------------------
