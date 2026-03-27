@@ -59,4 +59,4 @@ controller:
   # ---------------------------------------------------------
   # Logging — increase to debug if troubleshooting routing
   # ---------------------------------------------------------
-  logLevel: 1                          # 1=info, 3=debug
+  logLevel: "info"                     # Options: info, debug, warn, error
