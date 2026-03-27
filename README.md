@@ -135,8 +135,10 @@ sudo bash k8s-nginx-install/k8s-install.sh
 
 | Guide | Audience | Contents |
 |-------|----------|----------|
-| [Deployment Guide](DEPLOYMENT_GUIDE.md) | Lab builder | Full build — both modes covered with clear branching |
-| [Demo Guide](DEMO_GUIDE.md) | SE / presenter | Two-persona walkthrough — standalone demo then IngressLink demo |
+| [Deployment Guide](DEPLOYMENT_GUIDE.md) | Lab builder | Shared setup: K8s cluster + BIG-IP prep |
+| [Mode A: CIS Standalone](DEPLOYMENT_GUIDE_MODE_A.md) | Lab builder | BIG-IP → Pods directly |
+| [Mode B: CIS + IngressLink](DEPLOYMENT_GUIDE_MODE_B.md) | Lab builder | BIG-IP → NGINX IC → Pods |
+| [Demo Guide](DEMO_GUIDE.md) | SE / presenter | Walkthrough for both modes with talking points |
 
 ---
 
