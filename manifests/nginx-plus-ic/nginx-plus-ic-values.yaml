@@ -21,7 +21,8 @@ controller:
   # ---------------------------------------------------------
   image:
     repository: private-registry.nginx.com/nginx-ic/nginx-plus-ingress
-    tag: 4.0.0                         # Check for latest at docs.nginx.com
+    # Don't override tag — let the Helm chart use its matching default
+    # (chart 2.5.1 ships with the correct image version)
     pullPolicy: IfNotPresent
 
   # Pull secret for the NGINX Plus private registry
