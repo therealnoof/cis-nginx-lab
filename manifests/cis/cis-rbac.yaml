@@ -29,6 +29,7 @@ rules:
       - endpoints
       - namespaces
       - ingresses
+      - ingressclasses
       - pods
     verbs: ["get", "list", "watch"]
 
