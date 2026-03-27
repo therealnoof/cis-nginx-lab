@@ -1,25 +1,27 @@
 # ============================================================
-# IngressLink Resource — Ties BIG-IP VIP to NGINX IC
+# CIS VirtualServer CRD — Creates a BIG-IP VIP for NGINX IC
 # ------------------------------------------------------------
 # This is the "bridge" between NetOps and DevOps:
 #
-#   - virtualServerAddress: the VIP that NetOps created on
-#     BIG-IP (or will be auto-created by CIS in the partition)
-#   - selector.matchLabels: finds the NGINX IC service so CIS
+#   - virtualServerAddress: the VIP on BIG-IP that clients hit
+#   - pool: points to the NGINX IC ClusterIP service so CIS
 #     knows which pods to add as BIG-IP pool members
+#   - policyRef: (optional) attach a WAF policy managed by NetOps
 #
 # When CIS sees this resource, it creates (or updates) a
-# Virtual Server on BIG-IP with a pool pointing to all
-# NGINX IC pod IPs on port 80/443.
+# Virtual Server on BIG-IP with a pool pointing to the
+# NGINX IC service.
 #
 # *** EDIT virtualServerAddress TO MATCH YOUR BIG-IP VIP ***
 # ============================================================
 
 apiVersion: cis.f5.com/v1
-kind: IngressLink
+kind: VirtualServer
 metadata:
-  name: nginx-ingress-link
+  name: nginx-ingress-vs
   namespace: nginx-ingress             # Same namespace as NGINX IC
+  labels:
+    f5cr: "true"                       # CIS watches for this label
 spec:
   # ---------------------------------------------------------
   # VIP address on BIG-IP — this is the external IP clients
@@ -28,9 +30,16 @@ spec:
   virtualServerAddress: "10.1.10.100"  # ← Your BIG-IP VIP address
 
   # ---------------------------------------------------------
-  # Label selector — must match the NGINX IC service/pods.
-  # The Helm chart labels pods with app.kubernetes.io/name.
+  # Ports — CIS creates listeners on BIG-IP for these ports
   # ---------------------------------------------------------
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: nginx-ingress
+  virtualServerHTTPPort: 80
+  virtualServerHTTPSPort: 443
+
+  # ---------------------------------------------------------
+  # Pool — points to the NGINX IC ClusterIP service
+  # CIS resolves this to the IC pod IPs for the BIG-IP pool
+  # ---------------------------------------------------------
+  pools:
+    - path: /
+      service: nginx-ingress-controller
+      servicePort: 80

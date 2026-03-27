@@ -12,9 +12,9 @@
 2. [Prepare BIG-IP](#step-2-prepare-big-ip)
 3. [Install NGINX Plus Ingress Controller](#step-3-install-nginx-plus-ingress-controller)
 4. [Install F5 CIS](#step-4-install-f5-cis)
-5. [Create IngressLink](#step-5-create-ingresslink)
+5. [Create CIS VirtualServer](#step-5-create-cis-virtualserver)
 6. [Deploy Sample Applications](#step-6-deploy-sample-applications)
-7. [Configure BIG-IP VIP and WAF](#step-7-configure-big-ip-vip-and-waf)
+7. [Configure BIG-IP WAF](#step-7-configure-big-ip-waf)
 8. [Verify End-to-End](#step-8-verify-end-to-end)
 9. [Troubleshooting](#troubleshooting)
 
@@ -260,17 +260,7 @@ kubectl create secret generic bigip-login \
 kubectl apply -f manifests/cis/cis-rbac.yaml
 ```
 
-### 4c. Install the CIS CRDs
-
-```bash
-# Check if CRDs already exist (newer CIS versions may include them)
-kubectl get crd ingresslinks.cis.f5.com 2>/dev/null
-
-# If not found, install the IngressLink CRD
-kubectl apply -f manifests/ingresslink/ingresslink-crd.yaml
-```
-
-### 4d. Edit and Deploy CIS
+### 4c. Edit and Deploy CIS
 
 Before applying, edit the CIS deployment to match your environment:
 
@@ -284,7 +274,7 @@ vi manifests/cis/cis-deployment.yaml
 kubectl apply -f manifests/cis/cis-deployment.yaml
 ```
 
-### 4e. Verify CIS
+### 4d. Verify CIS
 
 ```bash
 # Check the CIS pod is running
@@ -303,35 +293,35 @@ kubectl logs -n kube-system -l app=k8s-bigip-ctlr --tail=20
 
 ---
 
-## Step 5: Create IngressLink
+## Step 5: Create CIS VirtualServer
 
-IngressLink is the CRD that tells CIS to create a BIG-IP virtual server pointing to NGINX IC pods.
+The VirtualServer CRD tells CIS to create a BIG-IP virtual server with a pool pointing to the NGINX IC service.
 
-### 5a. Edit the IngressLink Resource
+### 5a. Edit the VirtualServer Resource
 
 ```bash
 # Update the VIP address to match your environment
-vi manifests/ingresslink/ingresslink.yaml
+vi manifests/cis/virtualserver.yaml
 
 # Change virtualServerAddress to the IP you want the BIG-IP VIP on
 # This IP must be in a network that BIG-IP can serve (typically a VLAN)
 ```
 
-### 5b. Apply IngressLink
+### 5b. Apply the VirtualServer CRD
 
 ```bash
-kubectl apply -f manifests/ingresslink/ingresslink.yaml
+kubectl apply -f manifests/cis/virtualserver.yaml
 ```
 
 ### 5c. Verify CIS Created the BIG-IP Config
 
 ```bash
-# Check IngressLink status
-kubectl get ingresslink -n nginx-ingress
+# Check VirtualServer status
+kubectl get vs -n nginx-ingress
 
 # Expected:
-# NAME                  VIP            AGE
-# nginx-ingress-link    10.1.10.100    10s
+# NAME               HOST   VIRTUALSERVERADDRESS   ...   AGE
+# nginx-ingress-vs          10.1.10.100                  10s
 
 # On BIG-IP GUI, verify:
 # 1. Go to Local Traffic → Virtual Servers → Virtual Server List
@@ -384,7 +374,7 @@ curl -s -H "Host: cafe.example.com" http://10.1.10.100/tea
 
 ---
 
-## Step 7: Configure BIG-IP VIP and WAF
+## Step 7: Configure BIG-IP WAF
 
 These steps are done by **NetOps** in the BIG-IP GUI.
 
@@ -440,8 +430,8 @@ kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
 echo "=== NGINX IC Pods ==="
 kubectl get pods -n nginx-ingress
 
-echo "=== IngressLink ==="
-kubectl get ingresslink -n nginx-ingress
+echo "=== CIS VirtualServer ==="
+kubectl get vs -n nginx-ingress
 
 echo "=== App Pods ==="
 kubectl get pods -l app=coffee
@@ -475,8 +465,8 @@ curl -s -H "Host: cafe.example.com" http://10.1.10.100/tea
 |---------|-------------|-----|
 | CIS pod in CrashLoopBackOff | Bad BIG-IP credentials or unreachable BIG-IP | Check `kubectl logs -n kube-system -l app=k8s-bigip-ctlr`. Verify secret and URL. |
 | NGINX IC pod ImagePullBackOff | Bad JWT token or wrong registry secret | Verify `kubectl get secret nginx-registry-secret -n nginx-ingress -o yaml`. Re-create with correct JWT. |
-| No VS on BIG-IP | CIS not watching the right namespace or IngressLink not applied | Check CIS args for `--namespace`. Check `kubectl get ingresslink -n nginx-ingress`. |
-| VS exists but pool is empty | VXLAN tunnel not set up or labels don't match | Verify tunnel (`tmsh show net tunnels tunnel flannel_vxlan`). Check IngressLink selector matches NGINX IC labels. |
+| No VS on BIG-IP | CIS not watching the right namespace or VirtualServer CRD not applied | Check CIS args for `--namespace`. Check `kubectl get vs -n nginx-ingress`. |
+| VS exists but pool is empty | VXLAN tunnel not set up or service name doesn't match | Verify tunnel (`tmsh show net tunnels tunnel flannel_vxlan`). Check VirtualServer pool service name matches NGINX IC service. |
 | curl to VIP times out | BIG-IP VIP address not routable from your client | Verify VIP is on a reachable network. Check BIG-IP route table. |
 | WAF not blocking | Policy in Transparent mode or not attached to VS | Check Security → Application Security → Policy status. Switch to Blocking. |
 | `kubectl` commands fail | KUBECONFIG not set | Run `export KUBECONFIG=/etc/kubernetes/admin.conf` |
@@ -494,10 +484,8 @@ kubectl delete -f manifests/apps/
 # Remove WAF policy CRD
 kubectl delete -f manifests/waf/waf-policy.yaml
 
-# Remove IngressLink
-kubectl delete -f manifests/ingresslink/ingresslink.yaml
-
-# Remove CIS
+# Remove CIS VirtualServer and CIS itself
+kubectl delete -f manifests/cis/virtualserver.yaml
 kubectl delete -f manifests/cis/cis-deployment.yaml
 kubectl delete -f manifests/cis/cis-rbac.yaml
 kubectl delete secret bigip-login -n kube-system
@@ -505,9 +493,6 @@ kubectl delete secret bigip-login -n kube-system
 # Remove NGINX IC
 helm uninstall nginx-ingress -n nginx-ingress
 kubectl delete namespace nginx-ingress
-
-# Remove IngressLink CRD (optional)
-kubectl delete -f manifests/ingresslink/ingresslink-crd.yaml
 ```
 
 **On BIG-IP:** Delete the `kubernetes` partition contents (CIS should have cleaned up when the deployment was deleted, but verify manually).

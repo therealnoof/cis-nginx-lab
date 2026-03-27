@@ -16,7 +16,7 @@ Before starting the demo, verify everything is healthy:
 # Quick health check — all pods should be Running
 kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
 kubectl get pods -n nginx-ingress
-kubectl get ingresslink -n nginx-ingress
+kubectl get vs -n nginx-ingress
 ```
 
 Have two windows open:
@@ -52,9 +52,9 @@ Have two windows open:
 ### Show in BIG-IP GUI
 
 1. **Local Traffic → Virtual Servers** — switch to `kubernetes` partition
-   - Show the VIP that was created by IngressLink
+   - Show the VIP that was created by the CIS VirtualServer CRD
    - Click into it → show the pool
-   - "CIS created this VS and pool automatically when we deployed the IngressLink resource in Kubernetes"
+   - "CIS created this VS and pool automatically when we deployed the VirtualServer resource in Kubernetes"
 
 2. Click into the **Pool** → **Members**
    - Show the NGINX IC pod IPs
@@ -66,8 +66,8 @@ Have two windows open:
 # Show what's running in K8s
 kubectl get pods --all-namespaces | grep -E "bigip|nginx"
 
-# Show the IngressLink resource
-kubectl get ingresslink -n nginx-ingress -o yaml
+# Show the CIS VirtualServer resource
+kubectl get vs -n nginx-ingress -o yaml
 ```
 
 ---
@@ -290,15 +290,15 @@ kubectl scale deployment coffee --replicas=0
 
 > "Let me show how CIS responds to CRDs in real-time. When DevOps applies Kubernetes resources with the right CRD types, CIS automatically configures BIG-IP. No manual steps, no tickets, no delay."
 
-### Live Demo: Change the IngressLink VIP
+### Live Demo: Change the VirtualServer VIP
 
 ```bash
-# Show current IngressLink
-kubectl get ingresslink -n nginx-ingress -o yaml
+# Show current VirtualServer
+kubectl get vs -n nginx-ingress -o yaml
 
 # Edit the VIP address (simulating a VIP change)
 # In a real scenario, NetOps would coordinate this
-kubectl patch ingresslink nginx-ingress-link -n nginx-ingress \
+kubectl patch vs nginx-ingress-vs -n nginx-ingress \
   --type='merge' \
   -p '{"spec":{"virtualServerAddress":"10.1.10.101"}}'
 
@@ -315,7 +315,7 @@ kubectl patch ingresslink nginx-ingress-link -n nginx-ingress \
 
 ```bash
 # Reset the VIP back
-kubectl patch ingresslink nginx-ingress-link -n nginx-ingress \
+kubectl patch vs nginx-ingress-vs -n nginx-ingress \
   --type='merge' \
   -p '{"spec":{"virtualServerAddress":"10.1.10.100"}}'
 ```

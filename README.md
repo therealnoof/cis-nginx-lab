@@ -1,6 +1,6 @@
 # F5 CIS + NGINX Plus Ingress Controller Lab
 
-**Two-persona lab demonstrating how F5 BIG-IP and NGINX Plus Ingress Controller work together using Container Ingress Services (CIS) with IngressLink.**
+**Two-persona lab demonstrating how F5 BIG-IP and NGINX Plus Ingress Controller work together using Container Ingress Services (CIS) with VirtualServer CRDs.**
 
 NetOps owns the BIG-IP — VIPs, WAF policies, and GSLB.
 DevOps owns Kubernetes — NGINX Plus IC, app deployments, and routing.
@@ -20,7 +20,7 @@ CIS bridges the two so new services go live **without a BIG-IP ticket**.
                           │  └────┬─────┘   └──────────────────┘    │
                           │       │                                  │
                           │       │  Pool members auto-managed       │
-                          │       │  by CIS (IngressLink)            │
+                          │       │  by CIS (VirtualServer CRD)      │
                           └───────┼──────────────────────────────────┘
                                   │
                     ──────────────┼──────────────────────────────
@@ -28,7 +28,7 @@ CIS bridges the two so new services go live **without a BIG-IP ticket**.
                                   │
                           ┌───────▼──────────┐
                           │   CIS Pod        │ ◄── Watches K8s API
-                          │   (f5-bigip-ctlr)│     for IngressLink /
+                          │   (f5-bigip-ctlr)│     for VirtualServer
                           │                  │     CRDs, updates BIG-IP
                           └──────────────────┘
                                   │
@@ -63,13 +63,11 @@ cis-nginx-lab/
     ├── cis/
     │   ├── cis-rbac.yaml                  <- ServiceAccount + ClusterRole for CIS
     │   ├── bigip-login-secret.yaml        <- TEMPLATE — fill in your creds
-    │   └── cis-deployment.yaml            <- CIS controller deployment
+    │   ├── cis-deployment.yaml            <- CIS controller deployment
+    │   └── virtualserver.yaml             <- VirtualServer CRD (ties BIG-IP VIP → IC)
     ├── nginx-plus-ic/
     │   ├── nginx-plus-ic-values.yaml      <- Helm values for NGINX Plus IC
     │   └── nginx-ingress-clusterip-svc.yaml <- ClusterIP service for IC pods
-    ├── ingresslink/
-    │   ├── ingresslink-crd.yaml           <- IngressLink CRD definition
-    │   └── ingresslink.yaml               <- IngressLink resource (ties BIG-IP → IC)
     ├── apps/
     │   ├── app1-coffee.yaml               <- Sample app: coffee (v1)
     │   ├── app2-tea.yaml                  <- Sample app: tea
@@ -124,7 +122,7 @@ sudo bash k8s-nginx-install/k8s-install.sh
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| **Phase 1** | Core lab — CIS + NGINX Plus IC + IngressLink + sample apps | **Available** |
+| **Phase 1** | Core lab — CIS + NGINX Plus IC + VirtualServer CRDs + sample apps | **Available** |
 | **Phase 2** | GSLB multi-site with DNS CRDs | Planned |
 | **Phase 3** | mTLS between BIG-IP and NGINX IC | Planned |
 | **Phase 4** | GitOps pipeline with Argo CD | Planned |
@@ -136,7 +134,7 @@ sudo bash k8s-nginx-install/k8s-install.sh
 | Term | What It Does |
 |------|-------------|
 | **CIS (Container Ingress Services)** | Controller pod that watches K8s API and programs BIG-IP automatically |
-| **IngressLink** | CRD that tells CIS to create a BIG-IP VIP pointing to NGINX IC pods |
+| **VirtualServer CRD** | F5 custom resource that tells CIS to create a BIG-IP VIP pointing to NGINX IC pods |
 | **NGINX Plus Ingress Controller** | Kubernetes-native ingress that routes traffic to app pods |
 | **WAF Policy CRD** | Lets CIS attach an ASM/AWAF policy on BIG-IP to the VIP — NetOps controls policy, DevOps references it |
 

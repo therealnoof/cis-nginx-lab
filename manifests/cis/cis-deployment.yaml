@@ -2,8 +2,8 @@
 # CIS Deployment — F5 BIG-IP Controller for Kubernetes
 # ------------------------------------------------------------
 # This runs the CIS pod in kube-system. CIS watches the K8s
-# API for IngressLink resources and CRDs, then programs the
-# BIG-IP accordingly (creates/updates VS, pools, etc.).
+# API for VirtualServer CRDs and other custom resources, then
+# programs BIG-IP accordingly (creates/updates VS, pools, etc.).
 #
 # Key flags explained:
 #   --bigip-url          BIG-IP management IP (https)
