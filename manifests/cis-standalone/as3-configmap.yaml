@@ -1,0 +1,69 @@
+# ============================================================
+# AS3 ConfigMap — Standalone Mode VIP Declaration
+# ------------------------------------------------------------
+# This ConfigMap contains an AS3 JSON declaration that tells
+# CIS to create a virtual server on BIG-IP.
+#
+# How AS3 works with CIS:
+#   1. You create this ConfigMap with an AS3 JSON declaration
+#   2. CIS detects it (via the f5type + as3 labels)
+#   3. CIS POSTs the declaration to BIG-IP's AS3 endpoint
+#   4. BIG-IP creates the VS, pool, and monitors
+#   5. CIS auto-populates pool members from the matching Service
+#
+# The Service that pairs with this ConfigMap uses special labels
+# to bind to the AS3 declaration:
+#   cis.f5.com/as3-tenant: AS3      (matches the Tenant name)
+#   cis.f5.com/as3-app: A1          (matches the Application name)
+#   cis.f5.com/as3-pool: web_pool   (matches the Pool name)
+#
+# *** EDIT virtualAddresses TO MATCH YOUR BIG-IP VIP ***
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: f5-as3-declaration
+  namespace: default
+  labels:
+    f5type: virtual-server             # Required — CIS looks for this label
+    as3: "true"                        # Required — tells CIS this is AS3
+data:
+  template: |
+    {
+        "class": "AS3",
+        "declaration": {
+            "class": "ADC",
+            "schemaVersion": "3.18.0",
+            "id": "cis-nginx-lab-standalone",
+            "label": "CIS Standalone VIP",
+            "remark": "BIG-IP VIP pointing directly to app pods",
+            "AS3": {
+                "class": "Tenant",
+                "A1": {
+                    "class": "Application",
+                    "template": "http",
+                    "serviceMain": {
+                        "class": "Service_HTTP",
+                        "virtualAddresses": [
+                            "10.1.10.100"
+                        ],
+                        "virtualPort": 80,
+                        "pool": "web_pool"
+                    },
+                    "web_pool": {
+                        "class": "Pool",
+                        "monitors": [
+                            "http"
+                        ],
+                        "members": [
+                            {
+                                "servicePort": 8080,
+                                "serverAddresses": []
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }

@@ -1,0 +1,70 @@
+# ============================================================
+# CIS Deployment — IngressLink Mode (BIG-IP → NGINX IC → Pods)
+# ------------------------------------------------------------
+# In IngressLink mode, CIS watches for IngressLink CRDs and
+# other F5 custom resources. BIG-IP handles L4 load balancing
+# to NGINX IC pods, and NGINX IC handles L7 routing to apps.
+#
+# Traffic flow:
+#   Client → BIG-IP VIP → NGINX IC Pods → App Pods
+#
+# Key difference from standalone:
+#   --custom-resource-mode=true   Watches CRDs (not Ingress/ConfigMaps)
+#   --flannel-name                VXLAN tunnel (same as standalone)
+#
+# BIG-IP does: L4 LB, WAF, SSL offload, GSLB
+# NGINX IC does: L7 routing, host/path rules, canary, rate limiting
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-bigip-ctlr
+  namespace: kube-system
+  labels:
+    app: k8s-bigip-ctlr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-bigip-ctlr
+  template:
+    metadata:
+      labels:
+        app: k8s-bigip-ctlr
+    spec:
+      serviceAccountName: bigip-ctlr
+      containers:
+        - name: k8s-bigip-ctlr
+          image: f5networks/k8s-bigip-ctlr:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BIGIP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: bigip-login
+                  key: username
+            - name: BIGIP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bigip-login
+                  key: password
+          command: ["/app/bin/k8s-bigip-ctlr"]
+          args:
+            # -------------------------------------------------------
+            # *** EDIT THESE VALUES FOR YOUR ENVIRONMENT ***
+            # -------------------------------------------------------
+            - "--bigip-url=https://10.1.1.4"          # ← BIG-IP mgmt IP
+            - "--bigip-partition=kubernetes"           # ← Partition CIS manages
+            - "--pool-member-type=cluster"             # Pod IPs via VXLAN
+            - "--flannel-name=/Common/fl-tunnel"       # ← VXLAN tunnel on BIG-IP
+            - "--custom-resource-mode=true"             # Watch CRDs (IngressLink, VS)
+            - "--insecure=true"                        # Skip TLS verify (lab only!)
+            - "--log-level=INFO"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

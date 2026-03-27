@@ -1,0 +1,74 @@
+# ============================================================
+# CIS Deployment — Standalone Mode (BIG-IP → Pods directly)
+# ------------------------------------------------------------
+# In standalone mode, CIS watches for Ingress resources and
+# AS3 ConfigMaps, then programs BIG-IP with virtual servers
+# whose pools point DIRECTLY to the application pods.
+#
+# There is NO NGINX IC in this path. BIG-IP handles both
+# L4 load balancing AND L7 routing.
+#
+# Traffic flow:
+#   Client → BIG-IP VIP → App Pod IPs (via VXLAN tunnel)
+#
+# Key flags:
+#   --pool-member-type=cluster   Uses pod IPs (requires VXLAN)
+#   --custom-resource-mode=false Watches Ingress + AS3 ConfigMaps
+#   --flannel-name               VXLAN tunnel name on BIG-IP
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-bigip-ctlr
+  namespace: kube-system
+  labels:
+    app: k8s-bigip-ctlr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-bigip-ctlr
+  template:
+    metadata:
+      labels:
+        app: k8s-bigip-ctlr
+    spec:
+      serviceAccountName: bigip-ctlr
+      containers:
+        - name: k8s-bigip-ctlr
+          image: f5networks/k8s-bigip-ctlr:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BIGIP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: bigip-login
+                  key: username
+            - name: BIGIP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bigip-login
+                  key: password
+          command: ["/app/bin/k8s-bigip-ctlr"]
+          args:
+            # -------------------------------------------------------
+            # *** EDIT THESE VALUES FOR YOUR ENVIRONMENT ***
+            # -------------------------------------------------------
+            - "--bigip-url=https://10.1.1.4"          # ← BIG-IP mgmt IP
+            - "--bigip-partition=kubernetes"           # ← Partition CIS manages
+            - "--pool-member-type=cluster"             # Pod IPs via VXLAN
+            - "--flannel-name=/Common/fl-tunnel"       # ← VXLAN tunnel on BIG-IP
+            - "--custom-resource-mode=false"            # Watch Ingress + AS3 ConfigMaps
+            - "--insecure=true"                        # Skip TLS verify (lab only!)
+            - "--log-level=INFO"
+            - "--agent=as3"                            # Use AS3 for declarations
+            - "--log-as3-response=true"                # Log AS3 responses (debug)
+            - "--as3-validation=true"                  # Validate AS3 before sending
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

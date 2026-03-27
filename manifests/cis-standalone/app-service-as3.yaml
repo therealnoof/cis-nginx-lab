@@ -1,0 +1,66 @@
+# ============================================================
+# App Service with AS3 Labels — Standalone Mode
+# ------------------------------------------------------------
+# This Service connects the app pods to the AS3 declaration.
+# The special cis.f5.com labels tell CIS which AS3 pool to
+# populate with this Service's endpoints (pod IPs).
+#
+# Label mapping:
+#   cis.f5.com/as3-tenant → matches AS3 Tenant name ("AS3")
+#   cis.f5.com/as3-app    → matches AS3 Application name ("A1")
+#   cis.f5.com/as3-pool   → matches AS3 Pool name ("web_pool")
+#
+# When CIS sees these labels, it auto-fills the pool's
+# serverAddresses with the pod IPs from this Service.
+# ============================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: f5-hello-world-web
+  namespace: default
+  labels:
+    app: f5-hello-world
+    cis.f5.com/as3-tenant: AS3         # Must match AS3 Tenant name
+    cis.f5.com/as3-app: A1             # Must match AS3 Application name
+    cis.f5.com/as3-pool: web_pool      # Must match AS3 Pool name
+spec:
+  selector:
+    app: f5-hello-world
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+
+---
+
+# Simple hello-world app deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: f5-hello-world-web
+  namespace: default
+  labels:
+    app: f5-hello-world
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: f5-hello-world
+  template:
+    metadata:
+      labels:
+        app: f5-hello-world
+    spec:
+      containers:
+        - name: f5-hello-world
+          image: f5devcentral/f5-hello-world
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

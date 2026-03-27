@@ -1,21 +1,25 @@
 # F5 CIS + NGINX Plus IC Lab — Deployment Guide
 
-## Full Build: Ubuntu → Kubernetes → CIS → NGINX Plus IC → Sample Apps
+## Full Build: Two Deployment Modes
 
-> **Audience:** Lab builder — follow these steps end-to-end to build the lab environment from scratch.
+> **Audience:** Lab builder — follow these steps to build the environment from scratch.
+>
+> **Choose your path:**
+> - **Mode A (CIS Standalone):** BIG-IP → Pods directly. Steps 1 → 2 → 4A → 6A
+> - **Mode B (CIS + IngressLink):** BIG-IP → NGINX IC → Pods. Steps 1 → 2 → 3 → 4B → 5 → 6B → 7
 
 ---
 
 ## Table of Contents
 
-1. [Build the Kubernetes Cluster](#step-1-build-the-kubernetes-cluster)
-2. [Prepare BIG-IP](#step-2-prepare-big-ip)
-3. [Install NGINX Plus Ingress Controller](#step-3-install-nginx-plus-ingress-controller)
-4. [Install F5 CIS](#step-4-install-f5-cis)
-5. [Create CIS VirtualServer](#step-5-create-cis-virtualserver)
-6. [Deploy Sample Applications](#step-6-deploy-sample-applications)
-7. [Configure BIG-IP WAF](#step-7-configure-big-ip-waf)
-8. [Verify End-to-End](#step-8-verify-end-to-end)
+1. [Build the Kubernetes Cluster](#step-1-build-the-kubernetes-cluster) — Both modes
+2. [Prepare BIG-IP](#step-2-prepare-big-ip) — Both modes
+3. [Install NGINX Plus IC](#step-3-install-nginx-plus-ingress-controller) — Mode B only
+4. [Install F5 CIS](#step-4-install-f5-cis) — Choose 4A or 4B
+5. [Create IngressLink](#step-5-create-ingresslink) — Mode B only
+6. [Deploy Applications](#step-6-deploy-applications) — Choose 6A or 6B
+7. [Configure WAF](#step-7-configure-waf) — Mode B only
+8. [Verify End-to-End](#step-8-verify-end-to-end) — Both modes
 9. [Troubleshooting](#troubleshooting)
 
 ---
@@ -26,13 +30,16 @@
 |-----------|-------------|
 | **K8s VM** | Ubuntu 22.04, 4 CPU, 8 GB RAM, 50 GB disk |
 | **BIG-IP VE** | v15.1+ on a separate VM, LTM + ASM provisioned |
+| **AS3 Extension** | Installed on BIG-IP ([GitHub releases](https://github.com/F5Networks/f5-appsvcs-extension/releases)) |
 | **Network** | K8s node and BIG-IP management interface must be routable to each other |
-| **NGINX Plus License** | JWT token from [MyF5](https://my.f5.com) |
+| **NGINX Plus License** | JWT token from [MyF5](https://my.f5.com) — **Mode B only** |
 | **Internet** | Both VMs need internet access for pulling images |
 
 ---
 
 ## Step 1: Build the Kubernetes Cluster
+
+> **Required for:** Both modes
 
 We use the companion install script to stand up a single-node kubeadm cluster with containerd, Flannel CNI, and Helm.
 
@@ -67,6 +74,8 @@ helm version
 ---
 
 ## Step 2: Prepare BIG-IP
+
+> **Required for:** Both modes
 
 These steps are done in the **BIG-IP GUI** (TMUI) by NetOps.
 
@@ -124,12 +133,15 @@ CIS with `--pool-member-type=cluster` needs BIG-IP to route directly to pod IPs.
 tmsh create net tunnels vxlan fl-vxlan port 8472 flooding-type none
 
 # Create VXLAN tunnel
-tmsh create net tunnels tunnel flannel_vxlan key 1 profile fl-vxlan \
+tmsh create net tunnels tunnel fl-tunnel key 1 profile fl-vxlan \
   local-address 10.1.20.10  # ← BIG-IP internal self-IP (NOT the mgmt IP)
 
 # Create a self-IP on the tunnel (must be in the Flannel pod CIDR)
 tmsh create net self flannel-self address 10.244.255.254/16 \
-  allow-service all vlan flannel_vxlan
+  allow-service all vlan fl-tunnel
+
+# Save the config
+tmsh save sys config
 ```
 
 > **Why?** Flannel uses VXLAN to encapsulate pod traffic. BIG-IP needs a tunnel endpoint in the same VXLAN so it can send traffic directly to pod IPs (not just node IPs). The self-IP `10.244.255.254` is an unused address in the pod CIDR range.
@@ -138,7 +150,7 @@ tmsh create net self flannel-self address 10.244.255.254/16 \
 
 ```bash
 # Get the BIG-IP VTEP MAC address
-# On BIG-IP: tmsh show net tunnels tunnel flannel_vxlan all-properties
+# On BIG-IP: tmsh show net tunnels tunnel fl-tunnel all-properties
 # Look for the MAC address field
 
 # Create the BIG-IP node annotation in K8s
@@ -159,7 +171,26 @@ EOF
 
 > Replace `<BIG-IP-VTEP-MAC>` with the actual MAC address and `10.1.20.10` with your BIG-IP internal self-IP.
 
-### 2e. Verify Network Connectivity
+### 2e. Create Proxy Protocol iRule (Mode B only)
+
+If you plan to use IngressLink (Mode B), create this iRule on BIG-IP so NGINX IC receives the real client IP:
+
+**On BIG-IP GUI:** Local Traffic → iRules → iRule List → Create
+
+Name: `Proxy_Protocol_iRule`
+
+```tcl
+when CLIENT_ACCEPTED {
+    set proxyheader "PROXY TCP[IP::version] [IP::remote_addr] [IP::local_addr] [TCP::remote_port] [TCP::local_port]\r\n"
+}
+when SERVER_CONNECTED {
+    TCP::respond $proxyheader
+}
+```
+
+> **Why?** Without Proxy Protocol, NGINX IC sees all requests coming from BIG-IP's tunnel IP. The iRule injects the real client IP into the Proxy Protocol header, and NGINX reads it.
+
+### 2f. Verify Network Connectivity
 
 ```bash
 # From the K8s node, verify you can reach BIG-IP management API
@@ -175,7 +206,9 @@ curl -sk -u admin:YOUR_PASSWORD https://10.1.1.4/mgmt/tm/sys/version | python3 -
 
 ## Step 3: Install NGINX Plus Ingress Controller
 
-NGINX Plus IC requires a license. You'll create a Kubernetes secret with your JWT token, then install via Helm.
+> **Required for:** Mode B (IngressLink) only — skip this step for Mode A
+
+NGINX Plus IC requires a license. You'll create Kubernetes secrets with your JWT token, then install via Helm.
 
 ### 3a. Create the Registry Secret
 
@@ -212,7 +245,7 @@ kubectl create secret generic license-token \
 ### 3c. Install via Helm
 
 ```bash
-# Add/update the NGINX Helm chart
+# Install NGINX Plus IC using the Helm values file
 helm install nginx-ingress oci://ghcr.io/nginx/charts/nginx-ingress \
   --namespace nginx-ingress \
   -f manifests/nginx-plus-ic/nginx-plus-ic-values.yaml \
@@ -239,144 +272,223 @@ kubectl get svc -n nginx-ingress
 
 ## Step 4: Install F5 CIS
 
-CIS is the controller that watches Kubernetes and programs BIG-IP.
+> **Choose 4A or 4B based on your deployment mode.**
 
-### 4a. Create the BIG-IP Login Secret
+### Shared Setup (Both Modes)
 
 ```bash
-# Create the secret with your BIG-IP admin credentials
+# Create the BIG-IP login secret
 kubectl create secret generic bigip-login \
   --namespace kube-system \
   --from-literal=username=admin \
   --from-literal=password=YOUR_BIGIP_PASSWORD
-```
 
-> **Security note:** We use `kubectl create secret` instead of applying the YAML template so credentials never touch disk. In production, use a secrets manager.
-
-### 4b. Apply CIS RBAC
-
-```bash
-# Create the ServiceAccount, ClusterRole, and ClusterRoleBinding
+# Apply CIS RBAC (ServiceAccount, ClusterRole, ClusterRoleBinding)
 kubectl apply -f manifests/cis/cis-rbac.yaml
 ```
 
-### 4c. Edit and Deploy CIS
+---
 
-Before applying, edit the CIS deployment to match your environment:
+### Step 4A: Deploy CIS — Standalone Mode
+
+> **Mode A:** BIG-IP VIP → App Pods directly
 
 ```bash
-# Open the file and update these values:
+# Edit the deployment for your environment:
 #   --bigip-url         → your BIG-IP management IP
 #   --bigip-partition   → partition name (should be "kubernetes")
-vi manifests/cis/cis-deployment.yaml
+#   --flannel-name      → VXLAN tunnel name (should be "/Common/fl-tunnel")
+vi manifests/cis-standalone/cis-deployment-standalone.yaml
 
-# Apply the deployment
-kubectl apply -f manifests/cis/cis-deployment.yaml
+# Apply the CIS deployment
+kubectl apply -f manifests/cis-standalone/cis-deployment-standalone.yaml
 ```
 
-### 4d. Verify CIS
+**Key flags for standalone mode:**
+- `--custom-resource-mode=false` — watches Ingress resources and AS3 ConfigMaps
+- `--agent=as3` — uses AS3 to push declarations to BIG-IP
+- `--pool-member-type=cluster` — routes to pod IPs via VXLAN
 
+**Verify:**
 ```bash
-# Check the CIS pod is running
 kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
-
-# Expected:
-# NAME                              READY   STATUS    RESTARTS   AGE
-# k8s-bigip-ctlr-xxxxxxxxx-xxxxx   1/1     Running   0          30s
-
-# Check CIS logs for successful BIG-IP connection
 kubectl logs -n kube-system -l app=k8s-bigip-ctlr --tail=20
-
-# Look for: "Successfully connected to BIG-IP" or similar
-# If you see auth errors, double-check the bigip-login secret
 ```
+
+**→ Continue to [Step 6A](#step-6a-deploy-app--standalone-mode)**
 
 ---
 
-## Step 5: Create CIS VirtualServer
+### Step 4B: Deploy CIS — IngressLink Mode
 
-The VirtualServer CRD tells CIS to create a BIG-IP virtual server with a pool pointing to the NGINX IC service.
+> **Mode B:** BIG-IP VIP → NGINX IC → App Pods
 
-### 5a. Edit the VirtualServer Resource
+```bash
+# Install the IngressLink CRD (if not already present)
+kubectl get crd ingresslinks.cis.f5.com 2>/dev/null || \
+  kubectl apply -f manifests/cis-ingresslink/ingresslink-crd.yaml
+
+# Edit the deployment for your environment
+vi manifests/cis-ingresslink/cis-deployment-ingresslink.yaml
+
+# Apply the CIS deployment
+kubectl apply -f manifests/cis-ingresslink/cis-deployment-ingresslink.yaml
+```
+
+**Key flags for IngressLink mode:**
+- `--custom-resource-mode=true` — watches F5 CRDs (IngressLink, VirtualServer, etc.)
+- No `--agent=as3` — CIS manages AS3 internally for CRDs
+- `--pool-member-type=cluster` — routes to pod IPs via VXLAN
+
+**Verify:**
+```bash
+kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
+kubectl logs -n kube-system -l app=k8s-bigip-ctlr --tail=20
+```
+
+**→ Continue to [Step 5](#step-5-create-ingresslink)**
+
+---
+
+## Step 5: Create IngressLink
+
+> **Required for:** Mode B only
+
+IngressLink creates two BIG-IP virtual servers (port 80 + 443) with pools pointing to NGINX IC pod IPs.
+
+### 5a. Apply Proxy Protocol Config
+
+```bash
+# Tell NGINX IC to read Proxy Protocol headers from BIG-IP
+kubectl apply -f manifests/cis-ingresslink/nginx-config-proxy-protocol.yaml
+```
+
+### 5b. Create the NGINX IC Service for IngressLink
+
+```bash
+# Create the ClusterIP service that IngressLink discovers via labels
+kubectl apply -f manifests/cis-ingresslink/nginx-ingress-service.yaml
+```
+
+### 5c. Edit and Apply the IngressLink Resource
 
 ```bash
 # Update the VIP address to match your environment
-vi manifests/cis/virtualserver.yaml
+vi manifests/cis-ingresslink/ingresslink.yaml
 
-# Change virtualServerAddress to the IP you want the BIG-IP VIP on
-# This IP must be in a network that BIG-IP can serve (typically a VLAN)
+# Apply it — CIS will create the BIG-IP virtual servers
+kubectl apply -f manifests/cis-ingresslink/ingresslink.yaml
 ```
 
-### 5b. Apply the VirtualServer CRD
+### 5d. Verify on BIG-IP
 
 ```bash
-kubectl apply -f manifests/cis/virtualserver.yaml
-```
-
-### 5c. Verify CIS Created the BIG-IP Config
-
-```bash
-# Check VirtualServer status
-kubectl get vs -n nginx-ingress
+# Check IngressLink status
+kubectl get il -n nginx-ingress
 
 # Expected:
-# NAME               HOST   VIRTUALSERVERADDRESS   ...   AGE
-# nginx-ingress-vs          10.1.10.100                  10s
-
-# On BIG-IP GUI, verify:
-# 1. Go to Local Traffic → Virtual Servers → Virtual Server List
-# 2. Change partition dropdown to "kubernetes"
-# 3. You should see a new VS with the VIP address
-# 4. Click into it → Resources → check the Pool
-# 5. Pool members should be the NGINX IC pod IPs
+# NAME              VIP            AGE
+# vs-ingresslink    10.1.10.100    10s
 ```
+
+**On BIG-IP GUI:**
+1. **Local Traffic → Virtual Servers** (switch to `kubernetes` partition)
+2. You should see two VS entries:
+   - `ingress_link_crd_10.1.10.100_80`
+   - `ingress_link_crd_10.1.10.100_443`
+3. Click into either → **Resources** → check the Pool
+4. Pool members should be the NGINX IC pod IPs
+
+**→ Continue to [Step 6B](#step-6b-deploy-apps--ingresslink-mode)**
 
 ---
 
-## Step 6: Deploy Sample Applications
+## Step 6: Deploy Applications
 
-### 6a. Deploy Coffee App (App 1)
+### Step 6A: Deploy App — Standalone Mode
+
+> **Mode A:** BIG-IP VIP → App Pods directly
+
+You have two approaches — choose one:
+
+**Option 1: AS3 ConfigMap** (recommended for demos)
 
 ```bash
+# Deploy the app + service with AS3 labels
+kubectl apply -f manifests/cis-standalone/app-service-as3.yaml
+
+# Deploy the AS3 ConfigMap — CIS will create the BIG-IP VIP
+kubectl apply -f manifests/cis-standalone/as3-configmap.yaml
+
+# Verify pods
+kubectl get pods -l app=f5-hello-world
+
+# Test through the BIG-IP VIP
+curl -s http://10.1.10.100
+```
+
+> **How it works:** The Service has special labels (`cis.f5.com/as3-tenant`, `cis.f5.com/as3-app`, `cis.f5.com/as3-pool`) that tell CIS to fill the AS3 pool with this Service's pod IPs. CIS sends the AS3 declaration to BIG-IP, which creates the VIP and pool.
+
+**Option 2: F5 Ingress Annotations** (alternative)
+
+```bash
+# Deploy the app (if not already deployed from Option 1)
+kubectl apply -f manifests/cis-standalone/app-service-as3.yaml
+
+# Deploy the Ingress with F5 annotations
+kubectl apply -f manifests/cis-standalone/ingress-f5.yaml
+
+# Test through the VIP
+curl -s http://10.1.10.100
+```
+
+> **Note:** Don't use both Options 1 and 2 for the same app — they'll conflict. The AS3 partition is named after the Tenant ("AS3"), while the Ingress uses `--bigip-partition` ("kubernetes").
+
+**On BIG-IP GUI:**
+1. **Local Traffic → Virtual Servers**
+2. Check the `AS3` partition (for Option 1) or `kubernetes` partition (for Option 2)
+3. You should see a VS with VIP `10.1.10.100`
+4. Pool members = app pod IPs (not node IPs — this is ClusterIP/VXLAN mode)
+
+**→ Skip to [Step 8](#step-8-verify-end-to-end)**
+
+---
+
+### Step 6B: Deploy Apps — IngressLink Mode
+
+> **Mode B:** BIG-IP VIP → NGINX IC → App Pods
+
+```bash
+# Deploy coffee app (App 1)
 kubectl apply -f manifests/apps/app1-coffee.yaml
 
-# Verify pods and service
+# Verify pods and ingress
 kubectl get pods -l app=coffee
-kubectl get svc coffee-svc
 kubectl get ingress coffee-ingress
-```
 
-### 6b. Test Through the Pipeline
-
-```bash
-# Test through the BIG-IP VIP (replace with your VIP address)
+# Test through the BIG-IP VIP
 curl -s -H "Host: cafe.example.com" http://10.1.10.100/coffee
-
-# Expected: Response from one of the coffee pods showing server name/address
 ```
 
-### 6c. Deploy Tea App (App 2)
-
-This demonstrates the "no ticket needed" value — deploy a second service and it's immediately reachable.
+**Deploy second service — no BIG-IP ticket needed:**
 
 ```bash
+# Deploy tea app (App 2) — live immediately through the same VIP!
 kubectl apply -f manifests/apps/app2-tea.yaml
 
-# Verify
-kubectl get pods -l app=tea
-kubectl get ingress tea-ingress
-
-# Test — should work immediately through the same VIP!
+# Test — should work instantly
 curl -s -H "Host: cafe.example.com" http://10.1.10.100/tea
 ```
 
-> **Key point for the demo:** No BIG-IP changes were needed. DevOps deployed a new service and it was instantly reachable through the existing VIP. CIS + NGINX IC handled everything.
+> **Key point:** No BIG-IP changes were needed for the second app. NGINX IC handles L7 routing. This is the "no ticket" value prop.
+
+**→ Continue to [Step 7](#step-7-configure-waf)**
 
 ---
 
-## Step 7: Configure BIG-IP WAF
+## Step 7: Configure WAF
 
-These steps are done by **NetOps** in the BIG-IP GUI.
+> **Required for:** Mode B (applies WAF to the IngressLink VIP). For Mode A, you can attach WAF directly on BIG-IP via the GUI.
 
 ### 7a. Create a WAF Policy on BIG-IP
 
@@ -387,28 +499,20 @@ These steps are done by **NetOps** in the BIG-IP GUI.
 5. Enforcement Mode: **Blocking** (or Transparent for initial demo)
 6. Click **Create Policy**
 
-> **Tip for demos:** Use "Transparent" mode first to show logging without blocking, then switch to "Blocking" to show enforcement.
-
 ### 7b. Apply WAF Policy via CRD
 
-DevOps applies the WAF policy reference (they don't configure WAF details):
-
 ```bash
-# Apply the WAF policy CRD
+# Apply the WAF policy CRD — CIS attaches it to the BIG-IP VS
 kubectl apply -f manifests/waf/waf-policy.yaml
-
-# CIS reads this and attaches the WAF policy to the BIG-IP VS
 ```
 
-### 7c. Verify WAF on BIG-IP
-
-1. **Local Traffic → Virtual Servers** (in `kubernetes` partition)
-2. Click on the virtual server → **Security → Policies**
-3. Verify the ASM policy is attached
-4. Test with a simple attack:
+### 7c. Verify WAF
 
 ```bash
-# This should be blocked (or logged) by WAF
+# Normal request — should work
+curl -s -H "Host: cafe.example.com" http://10.1.10.100/coffee
+
+# Attack request — WAF should block this
 curl -s -H "Host: cafe.example.com" \
   "http://10.1.10.100/coffee?param=<script>alert('xss')</script>"
 ```
@@ -417,21 +521,33 @@ curl -s -H "Host: cafe.example.com" \
 
 ## Step 8: Verify End-to-End
 
-Run through this checklist to confirm everything is working:
+### Mode A Verification
 
 ```bash
-# --- Kubernetes checks ---
-echo "=== K8s Nodes ==="
-kubectl get nodes
+echo "=== CIS Pod ==="
+kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
 
+echo "=== App Pods ==="
+kubectl get pods -l app=f5-hello-world
+
+echo "=== AS3 ConfigMap ==="
+kubectl get configmap f5-as3-declaration
+
+echo "=== Traffic Test ==="
+curl -s http://10.1.10.100
+```
+
+### Mode B Verification
+
+```bash
 echo "=== CIS Pod ==="
 kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
 
 echo "=== NGINX IC Pods ==="
 kubectl get pods -n nginx-ingress
 
-echo "=== CIS VirtualServer ==="
-kubectl get vs -n nginx-ingress
+echo "=== IngressLink ==="
+kubectl get il -n nginx-ingress
 
 echo "=== App Pods ==="
 kubectl get pods -l app=coffee
@@ -440,22 +556,16 @@ kubectl get pods -l app=tea
 echo "=== Ingresses ==="
 kubectl get ingress --all-namespaces
 
-echo "=== Services ==="
-kubectl get svc --all-namespaces | grep -E "coffee|tea|nginx"
-
-# --- Traffic checks ---
-echo "=== Coffee through VIP ==="
+echo "=== Traffic Tests ==="
 curl -s -H "Host: cafe.example.com" http://10.1.10.100/coffee
-
-echo "=== Tea through VIP ==="
 curl -s -H "Host: cafe.example.com" http://10.1.10.100/tea
 ```
 
-**BIG-IP GUI checks:**
-- [ ] Virtual Server exists in `kubernetes` partition
-- [ ] Pool has NGINX IC pod IPs as members
+**BIG-IP GUI checks (both modes):**
+- [ ] Virtual Server exists in the correct partition
+- [ ] Pool has correct member IPs (pod IPs for both modes)
 - [ ] Pool members show green (healthy)
-- [ ] WAF policy is attached (if Step 7 was completed)
+- [ ] WAF policy attached (if configured)
 
 ---
 
@@ -463,36 +573,46 @@ curl -s -H "Host: cafe.example.com" http://10.1.10.100/tea
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| CIS pod in CrashLoopBackOff | Bad BIG-IP credentials or unreachable BIG-IP | Check `kubectl logs -n kube-system -l app=k8s-bigip-ctlr`. Verify secret and URL. |
-| NGINX IC pod ImagePullBackOff | Bad JWT token or wrong registry secret | Verify `kubectl get secret nginx-registry-secret -n nginx-ingress -o yaml`. Re-create with correct JWT. |
-| No VS on BIG-IP | CIS not watching the right namespace or VirtualServer CRD not applied | Check CIS args for `--namespace`. Check `kubectl get vs -n nginx-ingress`. |
-| VS exists but pool is empty | VXLAN tunnel not set up or service name doesn't match | Verify tunnel (`tmsh show net tunnels tunnel flannel_vxlan`). Check VirtualServer pool service name matches NGINX IC service. |
-| curl to VIP times out | BIG-IP VIP address not routable from your client | Verify VIP is on a reachable network. Check BIG-IP route table. |
-| WAF not blocking | Policy in Transparent mode or not attached to VS | Check Security → Application Security → Policy status. Switch to Blocking. |
-| `kubectl` commands fail | KUBECONFIG not set | Run `export KUBECONFIG=/etc/kubernetes/admin.conf` |
+| CIS CrashLoopBackOff | Bad BIG-IP credentials, unreachable BIG-IP, or missing AS3 | Check `kubectl logs -n kube-system -l app=k8s-bigip-ctlr`. Verify secret, URL, and AS3 install. |
+| `AS3 RPM is not installed on BIGIP` | AS3 extension not installed | Install AS3 RPM (see Step 2b) |
+| NGINX IC ImagePullBackOff | Bad JWT token or wrong registry secret | Re-create `nginx-registry-secret` with correct JWT |
+| NGINX IC CrashLoop: `license-token not found` | Missing license secret | Create `license-token` secret with `--type=nginx.com/license` (Step 3b) |
+| NGINX IC CrashLoop: `must be of the type nginx.com/license` | Secret type is wrong | Delete and recreate with `--type=nginx.com/license` |
+| No VS on BIG-IP (standalone) | AS3 ConfigMap labels wrong or CIS not watching namespace | Check ConfigMap labels: `f5type: virtual-server` and `as3: "true"` |
+| No VS on BIG-IP (IngressLink) | IngressLink not applied or CIS not in CRD mode | Check `kubectl get il -n nginx-ingress`. Verify `--custom-resource-mode=true` |
+| VS exists but pool is empty | VXLAN tunnel not set up | Verify tunnel: `tmsh show net tunnels tunnel fl-tunnel` |
+| curl to VIP times out | BIG-IP VIP address not routable | Verify VIP is on a reachable network |
+| NGINX shows BIG-IP IP instead of client IP | Proxy Protocol not configured | Apply `nginx-config-proxy-protocol.yaml` and verify iRule on BIG-IP |
+| `kubectl` commands fail | KUBECONFIG not set | `export KUBECONFIG=/etc/kubernetes/admin.conf` |
 
 ---
 
 ## Teardown
 
-To clean up the lab without destroying the K8s cluster:
+### Mode A Teardown
 
 ```bash
-# Remove apps
-kubectl delete -f manifests/apps/
-
-# Remove WAF policy CRD
-kubectl delete -f manifests/waf/waf-policy.yaml
-
-# Remove CIS VirtualServer and CIS itself
-kubectl delete -f manifests/cis/virtualserver.yaml
-kubectl delete -f manifests/cis/cis-deployment.yaml
+kubectl delete -f manifests/cis-standalone/as3-configmap.yaml
+kubectl delete -f manifests/cis-standalone/app-service-as3.yaml
+kubectl delete -f manifests/cis-standalone/cis-deployment-standalone.yaml
 kubectl delete -f manifests/cis/cis-rbac.yaml
 kubectl delete secret bigip-login -n kube-system
-
-# Remove NGINX IC
-helm uninstall nginx-ingress -n nginx-ingress
-kubectl delete namespace nginx-ingress
 ```
 
-**On BIG-IP:** Delete the `kubernetes` partition contents (CIS should have cleaned up when the deployment was deleted, but verify manually).
+### Mode B Teardown
+
+```bash
+kubectl delete -f manifests/apps/
+kubectl delete -f manifests/waf/waf-policy.yaml
+kubectl delete -f manifests/cis-ingresslink/ingresslink.yaml
+kubectl delete -f manifests/cis-ingresslink/nginx-ingress-service.yaml
+kubectl delete -f manifests/cis-ingresslink/nginx-config-proxy-protocol.yaml
+kubectl delete -f manifests/cis-ingresslink/cis-deployment-ingresslink.yaml
+kubectl delete -f manifests/cis/cis-rbac.yaml
+kubectl delete secret bigip-login -n kube-system
+helm uninstall nginx-ingress -n nginx-ingress
+kubectl delete namespace nginx-ingress
+kubectl delete -f manifests/cis-ingresslink/ingresslink-crd.yaml
+```
+
+**On BIG-IP:** Delete the `kubernetes` and `AS3` partition contents (CIS should clean up when deployments are deleted, but verify manually).

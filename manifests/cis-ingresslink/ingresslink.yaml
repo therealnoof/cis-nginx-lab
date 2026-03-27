@@ -1,0 +1,38 @@
+# ============================================================
+# IngressLink Resource — Ties BIG-IP VIP to NGINX IC
+# ------------------------------------------------------------
+# This is the "bridge" between BIG-IP and NGINX IC:
+#
+#   - virtualServerAddress: the VIP that clients hit
+#   - iRules: attaches Proxy Protocol iRule so NGINX gets the
+#     real client IP (not BIG-IP's self-IP)
+#   - selector.matchLabels: finds the NGINX IC pods/service
+#
+# When CIS sees this resource, it creates TWO virtual servers
+# on BIG-IP automatically:
+#   - ingress_link_crd_<VIP>_80  (HTTP)
+#   - ingress_link_crd_<VIP>_443 (HTTPS)
+#
+# Both VS pools point to the NGINX IC pod IPs.
+#
+# *** EDIT virtualServerAddress FOR YOUR BIG-IP VIP ***
+# ============================================================
+
+apiVersion: cis.f5.com/v1
+kind: IngressLink
+metadata:
+  name: vs-ingresslink
+  namespace: nginx-ingress
+spec:
+  # BIG-IP VIP address — must be routable from clients
+  virtualServerAddress: "10.1.10.100"  # ← Your BIG-IP VIP address
+
+  # Proxy Protocol iRule — passes real client IP to NGINX IC
+  # You must create this iRule on BIG-IP first (see DEPLOYMENT_GUIDE.md)
+  iRules:
+    - /Common/Proxy_Protocol_iRule
+
+  # Label selector — must match the NGINX IC service/pods
+  selector:
+    matchLabels:
+      app: nginx-ingress

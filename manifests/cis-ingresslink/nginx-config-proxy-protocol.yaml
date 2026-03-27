@@ -1,0 +1,23 @@
+# ============================================================
+# NGINX ConfigMap — Proxy Protocol Settings
+# ------------------------------------------------------------
+# When using IngressLink, BIG-IP sends traffic to NGINX IC
+# with a Proxy Protocol header (via the iRule). NGINX needs
+# to be configured to read that header so it gets the real
+# client IP instead of the BIG-IP tunnel IP.
+#
+# Without this, all requests to NGINX will appear to come
+# from BIG-IP's self-IP, and you lose client IP visibility.
+#
+# Apply this AFTER installing NGINX IC via Helm.
+# ============================================================
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: nginx-ingress                  # Must match the NGINX IC Helm release name
+  namespace: nginx-ingress
+data:
+  proxy-protocol: "True"               # Read Proxy Protocol from BIG-IP
+  real-ip-header: "proxy_protocol"      # Use the PP header as the real IP source
+  set-real-ip-from: "0.0.0.0/0"        # Trust all sources (lab — restrict in prod)

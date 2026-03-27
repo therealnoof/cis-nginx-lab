@@ -1,0 +1,51 @@
+# ============================================================
+# F5 CIS Ingress Resource — Standalone Mode (Alternative)
+# ------------------------------------------------------------
+# This is an ALTERNATIVE to the AS3 ConfigMap approach.
+# Instead of AS3 JSON, you use a standard Kubernetes Ingress
+# with F5-specific annotations to create BIG-IP virtual servers.
+#
+# CIS reads these annotations and programs BIG-IP accordingly.
+# Objects are created in the partition specified by the
+# --bigip-partition flag (e.g., "kubernetes").
+#
+# Choose ONE approach per app:
+#   - AS3 ConfigMap (as3-configmap.yaml + app-service-as3.yaml)
+#   - OR this F5 Ingress (ingress-f5.yaml)
+#   Don't use both for the same app — they'll conflict.
+#
+# *** EDIT virtual-server.f5.com/ip FOR YOUR BIG-IP VIP ***
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: f5-hello-world-ingress
+  namespace: default
+  annotations:
+    # F5 CIS annotations — these tell CIS how to configure BIG-IP
+    virtual-server.f5.com/partition: "kubernetes"     # BIG-IP partition
+    virtual-server.f5.com/ip: "10.1.10.100"           # ← BIG-IP VIP address
+    virtual-server.f5.com/http-port: "80"              # Listener port
+    virtual-server.f5.com/ssl-redirect: "false"        # No HTTPS redirect (lab)
+    virtual-server.f5.com/balance: "round-robin"       # Load balancing method
+    virtual-server.f5.com/health: |
+      [
+        {
+          "path":     "/",
+          "send":     "HTTP GET /",
+          "interval": 5,
+          "timeout":  10
+        }
+      ]
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: f5-hello-world-web
+                port:
+                  number: 8080

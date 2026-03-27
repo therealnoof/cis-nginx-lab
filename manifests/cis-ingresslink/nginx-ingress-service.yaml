@@ -1,0 +1,31 @@
+# ============================================================
+# NGINX IC ClusterIP Service — IngressLink Mode
+# ------------------------------------------------------------
+# This service exposes NGINX IC pods for IngressLink to
+# discover. The label "app: nginx-ingress" must match the
+# IngressLink selector.
+#
+# IngressLink uses ClusterIP (not NodePort) because BIG-IP
+# routes directly to pod IPs via the VXLAN tunnel.
+# ============================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ingress-ingresslink
+  namespace: nginx-ingress
+  labels:
+    app: nginx-ingress                 # IngressLink selector matches this
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx-ingress                 # Must match NGINX IC pod labels
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP

@@ -1,0 +1,69 @@
+# ============================================================
+# F5 CIS Custom Resource Definitions
+# ------------------------------------------------------------
+# These CRDs define the custom resource types that CIS watches
+# in --custom-resource-mode=true (IngressLink mode).
+#
+# Includes:
+#   - VirtualServer (vs)     — L7 HTTP virtual server
+#   - TLSProfile (tls)       — TLS termination config
+#   - TransportServer (ts)   — L4 TCP/UDP virtual server
+#   - ExternalDNS (edns)     — DNS record management
+#   - IngressLink (il)       — BIG-IP-to-NGINX IC integration
+#
+# NOTE: Newer CIS versions may bundle these CRDs automatically.
+# Check with: kubectl get crd ingresslinks.cis.f5.com
+# If they already exist, skip this file.
+# ============================================================
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ingresslinks.cis.f5.com
+spec:
+  group: cis.f5.com
+  names:
+    kind: IngressLink
+    listKind: IngressLinkList
+    plural: ingresslinks
+    singular: ingresslink
+    shortNames:
+      - il
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                virtualServerAddress:
+                  type: string
+                host:
+                  type: string
+                iRules:
+                  type: array
+                  items:
+                    type: string
+                partition:
+                  type: string
+                selector:
+                  type: object
+                  properties:
+                    matchLabels:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+      additionalPrinterColumns:
+        - name: VIP
+          type: string
+          jsonPath: .spec.virtualServerAddress
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

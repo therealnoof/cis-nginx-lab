@@ -1,52 +1,63 @@
 # F5 CIS + NGINX Plus Ingress Controller Lab
 
-**Two-persona lab demonstrating how F5 BIG-IP and NGINX Plus Ingress Controller work together using Container Ingress Services (CIS) with VirtualServer CRDs.**
+**Two deployment modes demonstrating how F5 BIG-IP Container Ingress Services (CIS) integrates with Kubernetes — standalone and with NGINX Plus Ingress Controller via IngressLink.**
 
 NetOps owns the BIG-IP — VIPs, WAF policies, and GSLB.
-DevOps owns Kubernetes — NGINX Plus IC, app deployments, and routing.
+DevOps owns Kubernetes — apps, routing, and (in Mode B) NGINX Plus IC.
 CIS bridges the two so new services go live **without a BIG-IP ticket**.
+
+---
+
+## Two Deployment Modes
+
+### Mode A: CIS Standalone (BIG-IP → Pods)
+
+```
+  Client → BIG-IP VIP → App Pod IPs (via VXLAN)
+
+  BIG-IP handles EVERYTHING: L4 LB, L7 routing, WAF, SSL
+  No NGINX IC in the path
+```
+
+**Use when:** You want BIG-IP to directly load balance to pods. Simpler setup, fewer components. Good for traditional apps or when BIG-IP needs full L7 control.
+
+### Mode B: CIS + IngressLink (BIG-IP → NGINX IC → Pods)
+
+```
+  Client → BIG-IP VIP → NGINX IC Pods → App Pods
+
+  BIG-IP handles: L4 LB, WAF, SSL offload, GSLB
+  NGINX IC handles: L7 routing, host/path rules, canary, rate limiting
+```
+
+**Use when:** You want the two-persona model — NetOps controls BIG-IP security, DevOps controls NGINX routing at Kubernetes speed. Best for microservices and teams that need independent velocity.
 
 ---
 
 ## Architecture
 
 ```
-                          ┌──────────────────────────────────────────┐
-                          │              BIG-IP VE                   │
-                          │                                          │
-                          │  ┌──────────┐   ┌──────────────────┐    │
-  Internet ──────────────►│  │   VIP    │──►│   WAF Policy     │    │
-                          │  │ (VS)     │   │   (ASM / AWAF)   │    │
-                          │  └────┬─────┘   └──────────────────┘    │
-                          │       │                                  │
-                          │       │  Pool members auto-managed       │
-                          │       │  by CIS (VirtualServer CRD)      │
-                          └───────┼──────────────────────────────────┘
-                                  │
-                    ──────────────┼──────────────────────────────
-                    Kubernetes    │   Single-node kubeadm cluster
-                                  │
-                          ┌───────▼──────────┐
-                          │   CIS Pod        │ ◄── Watches K8s API
-                          │   (f5-bigip-ctlr)│     for VirtualServer
-                          │                  │     CRDs, updates BIG-IP
-                          └──────────────────┘
-                                  │
-                          ┌───────▼──────────┐
-                          │  NGINX Plus IC   │ ◄── ClusterIP service
-                          │  (Ingress Ctrl)  │     (no NodePort needed)
-                          └───────┬──────────┘
-                                  │
-                     ┌────────────┼────────────┐
-                     │            │            │
-               ┌─────▼───┐ ┌─────▼───┐ ┌─────▼───┐
-               │  App 1  │ │  App 2  │ │ Canary  │
-               │ (coffee)│ │  (tea)  │ │ (coffee │
-               │         │ │         │ │  v2)    │
-               └─────────┘ └─────────┘ └─────────┘
+                    MODE A (Standalone)         MODE B (IngressLink)
+                    ───────────────────         ─────────────────────
 
-  NetOps ► manages BIG-IP VIP + WAF via GUI
-  DevOps ► manages everything below the line via kubectl / Helm
+                    ┌───────────────┐           ┌───────────────┐
+  Internet ────────►│  BIG-IP VIP   │           │  BIG-IP VIP   │◄──── Internet
+                    │  + WAF        │           │  + WAF        │
+                    │  + L7 routing │           │  (L4 only)    │
+                    └──────┬────────┘           └──────┬────────┘
+                           │                           │
+                    ───────┼────── K8s ────────────────┼──── K8s ──
+                           │                           │
+                           │                    ┌──────▼────────┐
+                           │                    │  NGINX Plus   │
+                           │                    │  Ingress Ctrl │
+                           │                    │  (L7 routing) │
+                           │                    └──────┬────────┘
+                           │                           │
+                    ┌──────▼──┐              ┌─────────▼─────────┐
+                    │ App Pod │              │  /coffee  │  /tea │
+                    │         │              │  App 1    │ App 2 │
+                    └─────────┘              └───────────────────┘
 ```
 
 ---
@@ -55,25 +66,39 @@ CIS bridges the two so new services go live **without a BIG-IP ticket**.
 
 ```
 cis-nginx-lab/
-├── README.md                              <- You are here
-├── DEPLOYMENT_GUIDE.md                    <- Full build: bare metal → working demo
-├── DEMO_GUIDE.md                          <- SE walkthrough (both personas)
-├── .gitignore                             <- Keeps secrets out of git
+├── README.md                                     <- You are here
+├── DEPLOYMENT_GUIDE.md                           <- Full build guide (both modes)
+├── DEMO_GUIDE.md                                 <- SE walkthrough (both modes)
+├── .gitignore
 └── manifests/
     ├── cis/
-    │   ├── cis-rbac.yaml                  <- ServiceAccount + ClusterRole for CIS
-    │   ├── bigip-login-secret.yaml        <- TEMPLATE — fill in your creds
-    │   ├── cis-deployment.yaml            <- CIS controller deployment
-    │   └── virtualserver.yaml             <- VirtualServer CRD (ties BIG-IP VIP → IC)
-    ├── nginx-plus-ic/
-    │   ├── nginx-plus-ic-values.yaml      <- Helm values for NGINX Plus IC
-    │   └── nginx-ingress-clusterip-svc.yaml <- ClusterIP service for IC pods
-    ├── apps/
-    │   ├── app1-coffee.yaml               <- Sample app: coffee (v1)
-    │   ├── app2-tea.yaml                  <- Sample app: tea
-    │   └── canary-coffee-v2.yaml          <- Canary: coffee v2 (for split traffic demo)
+    │   ├── cis-rbac.yaml                         <- ServiceAccount + ClusterRole (shared)
+    │   └── bigip-login-secret.yaml               <- TEMPLATE — fill in creds (shared)
+    │
+    ├── cis-standalone/                           <- MODE A: BIG-IP → Pods
+    │   ├── cis-deployment-standalone.yaml        <- CIS with --custom-resource-mode=false
+    │   ├── as3-configmap.yaml                    <- AS3 declaration for BIG-IP VIP
+    │   ├── app-service-as3.yaml                  <- App + Service with AS3 labels
+    │   └── ingress-f5.yaml                       <- Alternative: F5 Ingress annotations
+    │
+    ├── cis-ingresslink/                          <- MODE B: BIG-IP → NGINX IC → Pods
+    │   ├── cis-deployment-ingresslink.yaml       <- CIS with --custom-resource-mode=true
+    │   ├── ingresslink-crd.yaml                  <- IngressLink CRD definition
+    │   ├── ingresslink.yaml                      <- IngressLink resource (VIP → IC)
+    │   ├── nginx-ingress-service.yaml            <- ClusterIP service for NGINX IC
+    │   └── nginx-config-proxy-protocol.yaml      <- Proxy Protocol config for NGINX
+    │
+    ├── nginx-plus-ic/                            <- NGINX Plus IC (Mode B only)
+    │   ├── nginx-plus-ic-values.yaml             <- Helm values
+    │   └── nginx-ingress-clusterip-svc.yaml      <- Reference ClusterIP service
+    │
+    ├── apps/                                     <- Sample apps (Mode B)
+    │   ├── app1-coffee.yaml                      <- Coffee app + Ingress
+    │   ├── app2-tea.yaml                         <- Tea app + Ingress
+    │   └── canary-coffee-v2.yaml                 <- Canary deployment
+    │
     └── waf/
-        └── waf-policy.yaml                <- WAF policy CRD reference for BIG-IP
+        └── waf-policy.yaml                       <- WAF policy CRD (Mode B)
 ```
 
 ---
@@ -82,9 +107,9 @@ cis-nginx-lab/
 
 - **Ubuntu 22.04 VM** for Kubernetes (4 CPU / 8 GB RAM minimum)
 - **BIG-IP VE VM** (v15.1+) with LTM + ASM provisioned, reachable from the K8s node
-- **NGINX Plus license** — you will need a JWT token from [MyF5](https://my.f5.com)
-- **Internet access** on both VMs (for pulling images and Helm charts)
-- Familiarity with `kubectl` basics and BIG-IP TMUI
+- **AS3 extension** installed on BIG-IP ([GitHub releases](https://github.com/F5Networks/f5-appsvcs-extension/releases))
+- **NGINX Plus license** (Mode B only) — JWT token from [MyF5](https://my.f5.com)
+- **Internet access** on both VMs
 
 ---
 
@@ -95,16 +120,13 @@ cis-nginx-lab/
 git clone https://github.com/therealnoof/cis-nginx-lab.git
 cd cis-nginx-lab
 
-# 2. Build the K8s cluster (uses the companion install script)
-#    See DEPLOYMENT_GUIDE.md Step 1 for full details
+# 2. Build the K8s cluster
 git clone https://github.com/therealnoof/k8s-nginx-install.git
 sudo bash k8s-nginx-install/k8s-install.sh
 
-# 3. Follow the Deployment Guide end-to-end
-#    DEPLOYMENT_GUIDE.md walks through CIS, NGINX Plus IC, and sample apps
-
-# 4. Run the demo using the Demo Guide
-#    DEMO_GUIDE.md has the SE-ready walkthrough
+# 3. Choose your mode and follow the Deployment Guide:
+#    Mode A (standalone): Steps 1-2, then 4A, 6A
+#    Mode B (IngressLink): Steps 1-2, then 3, 4B, 5, 6B
 ```
 
 ---
@@ -113,8 +135,8 @@ sudo bash k8s-nginx-install/k8s-install.sh
 
 | Guide | Audience | Contents |
 |-------|----------|----------|
-| [Deployment Guide](DEPLOYMENT_GUIDE.md) | Lab builder | Full build from bare Ubuntu to working demo |
-| [Demo Guide](DEMO_GUIDE.md) | SE / presenter | Two-persona walkthrough with talking points |
+| [Deployment Guide](DEPLOYMENT_GUIDE.md) | Lab builder | Full build — both modes covered with clear branching |
+| [Demo Guide](DEMO_GUIDE.md) | SE / presenter | Two-persona walkthrough — standalone demo then IngressLink demo |
 
 ---
 
@@ -122,7 +144,7 @@ sudo bash k8s-nginx-install/k8s-install.sh
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| **Phase 1** | Core lab — CIS + NGINX Plus IC + VirtualServer CRDs + sample apps | **Available** |
+| **Phase 1** | Core lab — CIS standalone + CIS with IngressLink | **Available** |
 | **Phase 2** | GSLB multi-site with DNS CRDs | Planned |
 | **Phase 3** | mTLS between BIG-IP and NGINX IC | Planned |
 | **Phase 4** | GitOps pipeline with Argo CD | Planned |
@@ -134,9 +156,26 @@ sudo bash k8s-nginx-install/k8s-install.sh
 | Term | What It Does |
 |------|-------------|
 | **CIS (Container Ingress Services)** | Controller pod that watches K8s API and programs BIG-IP automatically |
-| **VirtualServer CRD** | F5 custom resource that tells CIS to create a BIG-IP VIP pointing to NGINX IC pods |
-| **NGINX Plus Ingress Controller** | Kubernetes-native ingress that routes traffic to app pods |
-| **WAF Policy CRD** | Lets CIS attach an ASM/AWAF policy on BIG-IP to the VIP — NetOps controls policy, DevOps references it |
+| **AS3 (Application Services 3)** | Declarative JSON API for configuring BIG-IP — CIS uses it under the hood |
+| **IngressLink** | CRD that tells CIS to create a BIG-IP VIP pointing to NGINX IC pods (Mode B) |
+| **NGINX Plus Ingress Controller** | Kubernetes-native ingress that routes traffic to app pods (Mode B) |
+| **WAF Policy CRD** | Lets CIS attach an ASM/AWAF policy on BIG-IP to the VIP |
+| **Proxy Protocol** | Passes real client IP from BIG-IP through NGINX IC to app pods (Mode B) |
+
+---
+
+## Mode Comparison
+
+| Capability | Mode A (Standalone) | Mode B (IngressLink) |
+|-----------|--------------------|--------------------|
+| L4 Load Balancing | BIG-IP | BIG-IP |
+| L7 Routing | BIG-IP | NGINX IC |
+| WAF | BIG-IP (direct) | BIG-IP (in front of NGINX) |
+| New app deployment | Requires new AS3/Ingress | Just add K8s Ingress — no BIG-IP change |
+| Canary releases | Not native | NGINX IC handles it |
+| Persona separation | Weak — BIG-IP does everything | Strong — NetOps/DevOps independent |
+| Complexity | Lower | Higher (more components) |
+| Best for | Traditional apps, simple setups | Microservices, team autonomy |
 
 ---
 
