@@ -171,13 +171,15 @@ kubectl create secret docker-registry nginx-registry-secret \
 NGINX Plus IC v5.x+ requires the JWT license mounted as a Kubernetes secret (in addition to the registry pull secret above). Without this, the IC pod will crash with: `license secret: could not find nginx-ingress/license-token`.
 
 ```bash
-# Create the license secret — the key MUST be "license.jwt"
+# Create the license secret
+# IMPORTANT: --type=nginx.com/license is required — a generic secret will be rejected
 kubectl create secret generic license-token \
   --namespace nginx-ingress \
+  --type=nginx.com/license \
   --from-file=license.jwt=/path/to/your/nginx-repo.jwt
 ```
 
-> **Note:** This is a different secret than the registry secret in Step 3a. The registry secret lets Kubernetes *pull* the image. The license secret lets NGINX Plus *run* with a valid license. You need both.
+> **Note:** This is a different secret than the registry secret in Step 3a. The registry secret lets Kubernetes *pull* the image. The license secret lets NGINX Plus *run* with a valid license. You need both. The secret type **must** be `nginx.com/license` or the IC will reject it.
 
 ### 3c. Install via Helm
 
