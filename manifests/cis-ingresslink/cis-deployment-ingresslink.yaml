@@ -57,7 +57,7 @@ spec:
             - "--bigip-url=https://10.1.1.4"          # ← BIG-IP mgmt IP
             - "--bigip-partition=kubernetes"           # ← Partition CIS manages
             - "--pool-member-type=cluster"             # Pod IPs via VXLAN
-            - "--flannel-name=/Common/fl-tunnel"       # ← VXLAN tunnel on BIG-IP
+            - "--flannel-name=/Common/flannel_vxlan"       # ← VXLAN tunnel on BIG-IP
             - "--custom-resource-mode=true"             # Watch CRDs (IngressLink, VS)
             - "--insecure=true"                        # Skip TLS verify (lab only!)
             - "--log-level=INFO"

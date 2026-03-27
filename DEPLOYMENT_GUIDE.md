@@ -126,12 +126,12 @@ CIS with `--pool-member-type=cluster` needs BIG-IP to route directly to pod IPs.
 tmsh create net tunnels vxlan fl-vxlan port 8472 flooding-type none
 
 # Create VXLAN tunnel
-tmsh create net tunnels tunnel fl-tunnel key 1 profile fl-vxlan \
+tmsh create net tunnels tunnel flannel_vxlan key 1 profile fl-vxlan \
   local-address 10.1.20.10  # ← BIG-IP internal self-IP (NOT the mgmt IP)
 
 # Create a self-IP on the tunnel (must be in the Flannel pod CIDR)
 tmsh create net self flannel-self address 10.244.255.254/16 \
-  allow-service all vlan fl-tunnel
+  allow-service all vlan flannel_vxlan
 
 # Save the config
 tmsh save sys config
@@ -143,7 +143,7 @@ tmsh save sys config
 
 ```bash
 # Get the BIG-IP VTEP MAC address
-# On BIG-IP: tmsh show net tunnels tunnel fl-tunnel all-properties
+# On BIG-IP: tmsh show net tunnels tunnel flannel_vxlan all-properties
 # Look for the MAC address field
 
 # Create the BIG-IP node annotation in K8s
@@ -218,6 +218,6 @@ kubectl apply -f manifests/cis/cis-rbac.yaml
 | NGINX IC ImagePullBackOff | Bad JWT token or wrong registry secret | Re-create `nginx-registry-secret` with correct JWT |
 | NGINX IC CrashLoop: `license-token not found` | Missing license secret | Create `license-token` secret with `--type=nginx.com/license` |
 | NGINX IC CrashLoop: `must be of the type nginx.com/license` | Secret type is wrong | Delete and recreate with `--type=nginx.com/license` |
-| VS exists but pool is empty | VXLAN tunnel not set up | Verify tunnel: `tmsh show net tunnels tunnel fl-tunnel` |
+| VS exists but pool is empty | VXLAN tunnel not set up | Verify tunnel: `tmsh show net tunnels tunnel flannel_vxlan` |
 | curl to VIP times out | BIG-IP VIP address not routable | Verify VIP is on a reachable network |
 | `kubectl` commands fail | KUBECONFIG not set | `export KUBECONFIG=/etc/kubernetes/admin.conf` |

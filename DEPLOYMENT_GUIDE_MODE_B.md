@@ -127,7 +127,7 @@ vi manifests/cis-ingresslink/cis-deployment-ingresslink.yaml
 Update these values:
 - `--bigip-url` → your BIG-IP management IP (e.g., `https://10.1.1.4`)
 - `--bigip-partition` → partition name (should be `kubernetes`)
-- `--flannel-name` → VXLAN tunnel name (should be `/Common/fl-tunnel`)
+- `--flannel-name` → VXLAN tunnel name (should be `/Common/flannel_vxlan`)
 
 ### 3c. Apply CIS Deployment
 
