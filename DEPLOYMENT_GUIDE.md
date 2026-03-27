@@ -77,7 +77,35 @@ These steps are done in the **BIG-IP GUI** (TMUI) by NetOps.
    - **Local Traffic (LTM)** — required for virtual servers and pools
    - **Application Security (ASM)** — required for WAF policies
 
-### 2b. Create a Partition for CIS
+### 2b. Install the AS3 Extension
+
+CIS uses **AS3 (Application Services 3)** to push declarations to BIG-IP. Without the AS3 RPM installed, CIS will crash with: `AS3 RPM is not installed on BIGIP`.
+
+1. Download the latest AS3 RPM from [F5 GitHub AS3 releases](https://github.com/F5Networks/f5-appsvcs-extension/releases)
+2. In BIG-IP GUI: **iApps → Package Management LX → Import**
+3. Upload the RPM file and wait for it to show as installed
+
+**Or install via CLI:**
+
+```bash
+# Download AS3 RPM to BIG-IP (check GitHub for latest version)
+curl -LO https://github.com/F5Networks/f5-appsvcs-extension/releases/download/v3.54.0/f5-appsvcs-3.54.0-6.noarch.rpm
+
+# Install it via the REST API
+curl -sk -u admin:YOUR_PASSWORD \
+  https://10.1.1.4/mgmt/shared/iapp/package-management-tasks \
+  -X POST -d '{"operation":"INSTALL","packageFilePath":"/var/config/rest/downloads/f5-appsvcs-3.54.0-6.noarch.rpm"}'
+```
+
+**Verify AS3 is running:**
+
+```bash
+curl -sk -u admin:YOUR_PASSWORD https://10.1.1.4/mgmt/shared/appsvcs/info | python3 -m json.tool
+
+# You should see version info in the JSON response
+```
+
+### 2c. Create a Partition for CIS
 
 CIS manages objects in a dedicated partition to avoid conflicts with existing BIG-IP config.
 
@@ -85,7 +113,7 @@ CIS manages objects in a dedicated partition to avoid conflicts with existing BI
 2. Name: `kubernetes`
 3. Click **Finished**
 
-### 2c. Configure VXLAN Tunnel (for Pod-to-BIG-IP Routing)
+### 2d. Configure VXLAN Tunnel (for Pod-to-BIG-IP Routing)
 
 CIS with `--pool-member-type=cluster` needs BIG-IP to route directly to pod IPs. This requires a VXLAN tunnel.
 
@@ -131,7 +159,7 @@ EOF
 
 > Replace `<BIG-IP-VTEP-MAC>` with the actual MAC address and `10.1.20.10` with your BIG-IP internal self-IP.
 
-### 2d. Verify Network Connectivity
+### 2e. Verify Network Connectivity
 
 ```bash
 # From the K8s node, verify you can reach BIG-IP management API
