@@ -182,14 +182,14 @@ kubectl get il -n nginx-ingress
 
 # Expected:
 # NAME              VIP            AGE
-# vs-ingresslink    10.1.10.100    10s
+# vs-ingresslink    10.1.20.100    10s
 ```
 
 **On BIG-IP GUI:**
 1. **Local Traffic → Virtual Servers** (switch to `kubernetes` partition)
 2. You should see two VS entries:
-   - `ingress_link_crd_10.1.10.100_80`
-   - `ingress_link_crd_10.1.10.100_443`
+   - `ingress_link_crd_10.1.20.100_80`
+   - `ingress_link_crd_10.1.20.100_443`
 3. Click into either → **Resources** → check the Pool
 4. Pool members should be the NGINX IC pod IPs
 5. Check that the `Proxy_Protocol_iRule` is attached under **Resources → iRules**
@@ -209,7 +209,7 @@ kubectl get svc coffee-svc
 kubectl get ingress coffee-ingress
 
 # Test through the BIG-IP VIP
-curl -s -H "Host: cafe.example.com" http://10.1.10.100/coffee
+curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee
 
 # Expected: Response from one of the coffee pods
 ```
@@ -226,7 +226,7 @@ kubectl get pods -l app=tea
 kubectl get ingress tea-ingress
 
 # Test immediately — should work through the same VIP!
-curl -s -H "Host: cafe.example.com" http://10.1.10.100/tea
+curl -s -H "Host: cafe.example.com" http://10.1.20.100/tea
 ```
 
 > **Key point:** No BIG-IP changes were needed. DevOps deployed a new service and it was instantly reachable. NGINX IC handles L7 routing (/coffee → coffee pods, /tea → tea pods). BIG-IP VIP and pool stayed exactly the same.
@@ -262,11 +262,11 @@ kubectl apply -f manifests/waf/waf-policy.yaml
 **Test:**
 ```bash
 # Normal request — should work fine
-curl -s -H "Host: cafe.example.com" http://10.1.10.100/coffee
+curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee
 
 # Attack request — WAF should block this
 curl -s -H "Host: cafe.example.com" \
-  "http://10.1.10.100/coffee?param=<script>alert('xss')</script>"
+  "http://10.1.20.100/coffee?param=<script>alert('xss')</script>"
 ```
 
 Check **Security → Event Logs → Application → Requests** on BIG-IP to see the blocked attempt.
@@ -299,10 +299,10 @@ echo "=== Services ==="
 kubectl get svc --all-namespaces | grep -E "coffee|tea|nginx"
 
 echo "=== Coffee through VIP ==="
-curl -s -H "Host: cafe.example.com" http://10.1.10.100/coffee
+curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee
 
 echo "=== Tea through VIP ==="
-curl -s -H "Host: cafe.example.com" http://10.1.10.100/tea
+curl -s -H "Host: cafe.example.com" http://10.1.20.100/tea
 ```
 
 **BIG-IP GUI checks:**

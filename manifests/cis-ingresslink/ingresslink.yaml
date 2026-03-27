@@ -25,7 +25,7 @@ metadata:
   namespace: nginx-ingress
 spec:
   # BIG-IP VIP address — must be routable from clients
-  virtualServerAddress: "10.1.10.100"  # ← Your BIG-IP VIP address
+  virtualServerAddress: "10.1.20.100"  # ← Your BIG-IP VIP address
 
   # Proxy Protocol iRule — passes real client IP to NGINX IC
   # You must create this iRule on BIG-IP first (see DEPLOYMENT_GUIDE.md)

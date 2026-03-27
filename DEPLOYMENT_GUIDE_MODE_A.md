@@ -119,7 +119,7 @@ kubectl get ingress f5-hello-world-ingress
 3. Switch partition to:
    - `AS3` (if you used Option 1)
    - `kubernetes` (if you used Option 2)
-4. You should see a VS with VIP `10.1.10.100`
+4. You should see a VS with VIP `10.1.20.100`
 5. Click into it → **Resources** → **Pool**
 6. Pool members should be the app pod IPs (not node IPs)
 
@@ -136,13 +136,13 @@ kubectl get pods -l app=f5-hello-world -o wide
 
 ```bash
 # Hit the VIP (replace with your VIP address)
-curl -s http://10.1.10.100
+curl -s http://10.1.20.100
 
 # Expected: HTML response from the f5-hello-world app
 
 # Run multiple requests to see load balancing across pods
 for i in $(seq 1 6); do
-  curl -s http://10.1.10.100 | grep -o "Server address:.*"
+  curl -s http://10.1.20.100 | grep -o "Server address:.*"
 done
 
 # You should see different pod IPs in the responses
@@ -169,7 +169,7 @@ echo "=== F5 Ingress ==="
 kubectl get ingress f5-hello-world-ingress 2>/dev/null && echo "Ingress mode" || echo "Not using F5 Ingress"
 
 echo "=== Traffic Test ==="
-curl -s http://10.1.10.100 | head -5
+curl -s http://10.1.20.100 | head -5
 ```
 
 **BIG-IP GUI checks:**
