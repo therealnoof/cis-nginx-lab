@@ -30,7 +30,7 @@ spec:
   # Proxy Protocol iRule — passes real client IP to NGINX IC
   # You must create this iRule on BIG-IP first (see DEPLOYMENT_GUIDE.md)
   iRules:
-    - /Common/Proxy_Protocol_iRule
+    - /Common/proxy_protocol_irule
 
   # Label selector — must match the NGINX IC service/pods
   selector:

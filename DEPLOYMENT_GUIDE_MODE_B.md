@@ -30,7 +30,7 @@ IngressLink uses Proxy Protocol to pass the real client IP from BIG-IP to NGINX 
 
 **On BIG-IP GUI:** Local Traffic → iRules → iRule List → Create
 
-Name: `Proxy_Protocol_iRule`
+Name: `proxy_protocol_irule`
 
 ```tcl
 when CLIENT_ACCEPTED {
@@ -192,7 +192,7 @@ kubectl get il -n nginx-ingress
    - `ingress_link_crd_10.1.20.10_443`
 3. Click into either → **Resources** → check the Pool
 4. Pool members should be the NGINX IC pod IPs
-5. Check that the `Proxy_Protocol_iRule` is attached under **Resources → iRules**
+5. Check that the `proxy_protocol_irule` is attached under **Resources → iRules**
 
 ---
 
@@ -345,7 +345,7 @@ kubectl delete -f manifests/cis-ingresslink/ingresslink-crd.yaml
 
 **On BIG-IP:**
 - Verify the `kubernetes` partition is empty (CIS should clean up automatically)
-- Optionally delete the `Proxy_Protocol_iRule` if no longer needed
+- Optionally delete the `proxy_protocol_irule` if no longer needed
 
 ---
 
