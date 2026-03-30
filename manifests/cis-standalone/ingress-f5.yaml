@@ -35,7 +35,7 @@ metadata:
   annotations:
     # F5 CIS annotations — these tell CIS how to configure BIG-IP
     virtual-server.f5.com/partition: "kubernetes"     # BIG-IP partition
-    virtual-server.f5.com/ip: "10.1.20.100"           # ← BIG-IP VIP address
+    virtual-server.f5.com/ip: "10.1.20.10"           # ← BIG-IP VIP address
     virtual-server.f5.com/http-port: "80"              # Listener port
     virtual-server.f5.com/ssl-redirect: "false"        # No HTTPS redirect (lab)
     virtual-server.f5.com/balance: "round-robin"       # Load balancing method

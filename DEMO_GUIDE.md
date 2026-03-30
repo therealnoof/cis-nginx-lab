@@ -141,7 +141,7 @@ kubectl get pods -l app=coffee -w
 # (Ctrl+C once running)
 
 # Test through the BIG-IP VIP
-curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee
+curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
 ```
 
 > "Traffic flows: Client → BIG-IP VIP → NGINX IC → Coffee pods. I didn't open a ticket, I didn't log into BIG-IP."
@@ -171,15 +171,15 @@ curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee
 kubectl apply -f manifests/apps/app2-tea.yaml
 
 # Test immediately — no waiting!
-curl -s -H "Host: cafe.example.com" http://10.1.20.100/tea
+curl -s -H "Host: cafe.example.com" http://10.1.20.10/tea
 ```
 
 > "Live in seconds. Same VIP, same BIG-IP config. NGINX IC routes /coffee to coffee pods, /tea to tea pods. DevOps velocity + NetOps control."
 
 ```bash
 # Hit both services
-curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee
-curl -s -H "Host: cafe.example.com" http://10.1.20.100/tea
+curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
+curl -s -H "Host: cafe.example.com" http://10.1.20.10/tea
 ```
 
 ---
@@ -207,11 +207,11 @@ kubectl apply -f manifests/waf/waf-policy.yaml
 **Test WAF:**
 ```bash
 # Normal request — works fine
-curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee
+curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
 
 # XSS attack — WAF blocks it
 curl -s -H "Host: cafe.example.com" \
-  "http://10.1.20.100/coffee?input=<script>alert(1)</script>"
+  "http://10.1.20.10/coffee?input=<script>alert(1)</script>"
 ```
 
 **Show on BIG-IP:** Security → Event Logs → Application → Requests
@@ -236,7 +236,7 @@ kubectl get pods -l app=coffee-v2
 
 # Traffic split based on pod count (2 v1 pods + 1 v2 pod ≈ 67/33)
 for i in $(seq 1 10); do
-  curl -s -H "Host: cafe.example.com" http://10.1.20.100/coffee | grep "Server name"
+  curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee | grep "Server name"
 done
 ```
 
@@ -277,7 +277,7 @@ kubectl patch il vs-ingresslink -n nginx-ingress \
 # Revert
 kubectl patch il vs-ingresslink -n nginx-ingress \
   --type='merge' \
-  -p '{"spec":{"virtualServerAddress":"10.1.20.100"}}'
+  -p '{"spec":{"virtualServerAddress":"10.1.20.10"}}'
 ```
 
 ---
