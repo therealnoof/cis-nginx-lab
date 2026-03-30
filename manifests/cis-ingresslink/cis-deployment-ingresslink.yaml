@@ -61,6 +61,8 @@ spec:
             - "--custom-resource-mode=true"             # Watch CRDs (IngressLink, VS)
             - "--insecure=true"                        # Skip TLS verify (lab only!)
             - "--log-level=INFO"
+            - "--namespace=nginx-ingress"              # Watch NGINX IC namespace
+            - "--namespace=default"                    # Watch default namespace
           resources:
             requests:
               cpu: 100m
