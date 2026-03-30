@@ -119,6 +119,8 @@ CIS manages objects in a dedicated partition to avoid conflicts with existing BI
 
 CIS with `--pool-member-type=cluster` needs BIG-IP to route directly to pod IPs. This requires a VXLAN tunnel.
 
+> **Required for both modes.** Mode A needs VXLAN to reach app pod IPs directly. Mode B needs VXLAN to reach NGINX IC pod IPs. If you want to skip VXLAN setup, you can use `--pool-member-type=nodeport` instead, but this requires changing services to NodePort type and is not covered in this guide.
+
 **On BIG-IP CLI (SSH or GUI Shell):**
 
 ```bash
