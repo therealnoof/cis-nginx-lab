@@ -58,21 +58,35 @@ spec:
 
 ---
 
-# Ingress tells NGINX IC how to route traffic to this app
-# Requests to /coffee go to the coffee-svc service
+# Master Ingress — defines the host for cafe.example.com
+# The master has NO paths — paths are defined in minion Ingresses
+# (coffee-minion-ingress, tea-ingress, etc.)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cafe-master-ingress
+  namespace: default
+  annotations:
+    nginx.org/mergeable-ingress-type: "master"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: cafe.example.com           # Host only — no paths
+
+---
+
+# Minion Ingress for coffee — routes /coffee to coffee-svc
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: coffee-ingress
   namespace: default
   annotations:
-    # Mergeable Ingress: this is the "master" for cafe.example.com
-    # Other apps (tea, canary) join as "minions" on the same host
-    nginx.org/mergeable-ingress-type: "master"
+    nginx.org/mergeable-ingress-type: "minion"
 spec:
-  ingressClassName: nginx              # Must match NGINX IC IngressClass
+  ingressClassName: nginx
   rules:
-    - host: cafe.example.com           # Hostname for routing
+    - host: cafe.example.com
       http:
         paths:
           - path: /coffee
