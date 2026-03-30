@@ -150,23 +150,39 @@ ping -c 3 10.1.20.10
 # If ping fails, the K8s node needs an IP on the 10.1.20.0/24 network.
 # If the node has a second NIC (e.g., ens6), assign it an IP:
 
-tee /etc/netplan/60-internal.yaml > /dev/null << 'NETEOF'
-network:
-  version: 2
-  ethernets:
-    ens6:
-      addresses:
-        - 10.1.20.20/24
-NETEOF
+# Step 1: Assign the IP immediately
+ip addr add 10.1.20.20/24 dev ens6
 
-chmod 600 /etc/netplan/60-internal.yaml
-netplan apply
+# Step 2: Make it persistent with a systemd service
+# (We use systemd instead of netplan because cloud-init can interfere
+# with netplan configs and cloud providers may change MAC addresses
+# on reboot, causing netplan interface matching to fail.)
+tee /etc/systemd/system/ens6-ip.service > /dev/null << 'SVCEOF'
+[Unit]
+Description=Assign static IP to ens6
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ip addr add 10.1.20.20/24 dev ens6
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+systemctl daemon-reload
+systemctl enable ens6-ip.service
+
+# Step 3: Prevent cloud-init from overwriting network config
+tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg > /dev/null << 'CIEOF'
+network: {config: disabled}
+CIEOF
 
 # Verify
 ping -c 3 10.1.20.10
 ```
-
-> **Cloud VMs:** Do NOT use `match: macaddress` in the netplan config. Cloud providers (AWS, Azure, etc.) may reassign MAC addresses on reboot, which will break the interface matching and leave the NIC without an IP. Use the interface name (`ens6`) instead.
 
 > **Important:** If your K8s node has multiple NICs, Flannel must use the interface on the BIG-IP internal network for VXLAN. Update the Flannel DaemonSet to specify the interface:
 
