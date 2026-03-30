@@ -35,4 +35,4 @@ spec:
   # Label selector — must match the NGINX IC service/pods
   selector:
     matchLabels:
-      app: nginx-ingress
+      app.kubernetes.io/name: nginx-ingress
