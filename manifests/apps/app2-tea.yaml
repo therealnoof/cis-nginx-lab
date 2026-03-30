@@ -63,6 +63,9 @@ kind: Ingress
 metadata:
   name: tea-ingress
   namespace: default
+  annotations:
+    # Mergeable Ingress: "minion" joins the cafe.example.com master
+    nginx.org/mergeable-ingress-type: "minion"
 spec:
   ingressClassName: nginx
   rules:

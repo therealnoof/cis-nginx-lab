@@ -66,8 +66,9 @@ metadata:
   name: coffee-ingress
   namespace: default
   annotations:
-    # Optional: add NGINX-specific annotations here
-    # nginx.org/lb-method: "round_robin"
+    # Mergeable Ingress: this is the "master" for cafe.example.com
+    # Other apps (tea, canary) join as "minions" on the same host
+    nginx.org/mergeable-ingress-type: "master"
 spec:
   ingressClassName: nginx              # Must match NGINX IC IngressClass
   rules:
