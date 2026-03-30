@@ -166,6 +166,8 @@ netplan apply
 ping -c 3 10.1.20.10
 ```
 
+> **Cloud VMs:** Do NOT use `match: macaddress` in the netplan config. Cloud providers (AWS, Azure, etc.) may reassign MAC addresses on reboot, which will break the interface matching and leave the NIC without an IP. Use the interface name (`ens6`) instead.
+
 > **Important:** If your K8s node has multiple NICs, Flannel must use the interface on the BIG-IP internal network for VXLAN. Update the Flannel DaemonSet to specify the interface:
 
 ```bash
