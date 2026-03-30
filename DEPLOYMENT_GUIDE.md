@@ -213,6 +213,8 @@ tmsh show net tunnels tunnel flannel_vxlan all-properties | grep -i mac
 ```
 
 > **Critical:** The MAC address in the K8s node annotation below **must exactly match** the MAC shown by BIG-IP. If they don't match, the VXLAN tunnel won't pass traffic and BIG-IP pool members will show as down.
+>
+> **After any BIG-IP reboot:** The VTEP MAC address can change on reboot (especially on cloud-hosted BIG-IP VE). After rebooting BIG-IP, always re-run the `tmsh show` command above and update the K8s node annotation if the MAC has changed. Symptoms of a stale MAC: BIG-IP pool members show down, BIG-IP can't ping pod IPs, no VXLAN packets on `tcpdump -i ens6 udp port 8472`.
 
 **Then create the node on the K8s server:**
 
