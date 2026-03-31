@@ -177,11 +177,6 @@ SVCEOF
 systemctl daemon-reload
 systemctl enable ens6-ip.service
 
-# Step 3: Prevent cloud-init from overwriting network config
-tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg > /dev/null << 'CIEOF'
-network: {config: disabled}
-CIEOF
-
 # Verify
 ping -c 3 10.1.20.10
 ```
