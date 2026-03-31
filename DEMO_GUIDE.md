@@ -267,7 +267,44 @@ curl -s -H "Host: tea.example.com" http://10.1.20.50/
 
 ---
 
-### Demo B5: Apply WAF Policy
+### Demo B5: Scale the Ingress Controller
+
+**Who:** DevOps (terminal) + NetOps (BIG-IP GUI)
+
+> "What happens when we need more capacity at the ingress layer? DevOps scales the NGINX IC — and BIG-IP automatically adds the new pods to its pool. No ticket, no manual pool edits."
+
+```bash
+# Show current NGINX IC — 1 pod
+kubectl get pods -n nginx-ingress
+
+# Scale to 3 replicas
+kubectl scale deployment -n nginx-ingress nginx-ingress-controller --replicas=3
+
+# Watch new pods come up
+kubectl get pods -n nginx-ingress -w
+# (Ctrl+C once all 3 are Running)
+```
+
+**Show on BIG-IP:**
+1. Refresh **Pool → Members** — 3 NGINX IC pod IPs now
+2. "CIS detected the new IC pods and updated the BIG-IP pool in real-time. BIG-IP now load balances across all 3 ingress controllers."
+
+**Test — traffic spreads across IC pods:**
+```bash
+curl -s -H "Host: coffee.example.com" http://10.1.20.50/
+curl -s -H "Host: tea.example.com" http://10.1.20.50/
+```
+
+> "Scaling the ingress layer is a DevOps operation. BIG-IP adapts automatically. Apps keep running, no downtime, no config changes. Scale back down and BIG-IP removes the members just as fast."
+
+```bash
+# Scale back to 1 for the rest of the demo
+kubectl scale deployment -n nginx-ingress nginx-ingress-controller --replicas=1
+```
+
+---
+
+### Demo B6: Apply WAF Policy
 
 **Who:** NetOps (GUI) + DevOps (terminal)
 
@@ -303,7 +340,7 @@ curl -s -H "Host: coffee.example.com" \
 
 ---
 
-### Demo B6: Canary Deployment
+### Demo B7: Canary Deployment
 
 **Who:** DevOps (terminal)
 
@@ -336,7 +373,7 @@ kubectl scale deployment coffee --replicas=0
 
 ---
 
-### Demo B7: CRD-Driven Automation
+### Demo B8: CRD-Driven Automation
 
 **Who:** DevOps (terminal)
 
