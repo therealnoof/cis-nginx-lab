@@ -16,73 +16,105 @@ Have two windows open:
 - **Window 1 (left):** BIG-IP GUI — logged in as NetOps
 - **Window 2 (right):** Terminal — SSH'd into K8s node as DevOps
 
-```bash
-# Quick health check
-kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
-kubectl get pods -n nginx-ingress  # Mode B only
-```
-
 ---
 
 ## Part 1: CIS Standalone (Mode A)
 
 > **Story:** "BIG-IP can load balance directly to Kubernetes pods. No extra components needed — just CIS watching the K8s API."
 
+### Clean Slate Setup (Mode A)
+
+Run these commands before starting the demo to ensure a clean state:
+
+```bash
+# Delete any existing apps and configs
+kubectl delete -f manifests/cis-standalone/ingress-f5.yaml 2>/dev/null
+kubectl delete -f manifests/cis-standalone/as3-configmap.yaml 2>/dev/null
+kubectl delete -f manifests/cis-standalone/app-service-as3.yaml 2>/dev/null
+
+# Wait for CIS to clean up BIG-IP
+sleep 10
+
+# Verify clean — no app pods should be running
+kubectl get pods -l app=f5-hello-world
+
+# Verify CIS is healthy
+kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
+
+# Verify BIG-IP — VS list should be empty in the kubernetes/AS3 partition
+```
+
 ---
 
 ### Demo A1: Show the Architecture
 
-**Who:** NetOps (BIG-IP GUI)
+**Who:** NetOps (BIG-IP GUI) + DevOps (terminal)
 
-> "Let me show you the simplest integration. BIG-IP has a VIP, and CIS automatically populated the pool with pod IPs from Kubernetes. No NGINX, no extra layers — BIG-IP talks directly to pods via a VXLAN tunnel."
+> "Let me show you the simplest integration. BIG-IP can load balance directly to Kubernetes pods. CIS — Container Ingress Services — watches the K8s API and programs BIG-IP automatically."
+
+**Show on terminal:**
+```bash
+# Show CIS is running — this is the bridge between K8s and BIG-IP
+kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
+
+# No apps deployed yet
+kubectl get pods
+kubectl get svc
+```
 
 **Show on BIG-IP:**
-1. **Local Traffic → Virtual Servers** — show the VS
-   - If using AS3 ConfigMap: check the `AS3` partition
-   - If using F5 Ingress annotations: check the `kubernetes` partition
-2. Click into the **Pool → Members** — show pod IPs
-3. "These are actual pod IPs on the overlay network. BIG-IP joined the Flannel VXLAN, so it routes directly to pods."
-
-**Show on terminal (Option 1 — AS3 ConfigMap):**
-```bash
-# Show what CIS is watching
-kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
-
-# Show the AS3 ConfigMap that defined the VIP
-kubectl get configmap f5-as3-declaration -o yaml | head -30
-
-# Show the Service with AS3 labels — these bind the Service to the AS3 pool
-kubectl get svc f5-hello-world-web --show-labels
-
-# Show the app pods — pod IPs should match BIG-IP pool members
-kubectl get pods -l app=f5-hello-world -o wide
-```
-
-> "The AS3 ConfigMap is a JSON declaration that tells BIG-IP exactly what to create — VIP, pool, monitors. The Service has special labels (`cis.f5.com/as3-tenant`, `cis.f5.com/as3-app`, `cis.f5.com/as3-pool`) that tell CIS which pool to populate with pod IPs."
-
-**Show on terminal (Option 2 — F5 Ingress Annotations):**
-```bash
-# Show what CIS is watching
-kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
-
-# Show the Ingress with F5 annotations
-kubectl get ingress f5-hello-world-ingress -o yaml | grep -A10 "annotations"
-
-# Key annotations:
-#   virtual-server.f5.com/ip        → BIG-IP VIP address
-#   virtual-server.f5.com/partition  → BIG-IP partition
-#   virtual-server.f5.com/http-port  → listener port
-#   virtual-server.f5.com/balance    → load balancing method
-
-# Show the app pods — pod IPs should match BIG-IP pool members
-kubectl get pods -l app=f5-hello-world -o wide
-```
-
-> "The F5 Ingress annotations are a simpler alternative to AS3. You use a standard Kubernetes Ingress with F5-specific annotations to tell CIS how to configure BIG-IP — VIP address, partition, port, and load balancing method. CIS reads the annotations and programs BIG-IP automatically."
+1. **Local Traffic → Virtual Servers** — empty (no apps deployed yet)
+2. "BIG-IP is ready and waiting. CIS is watching. Let's deploy an app."
 
 ---
 
-### Demo A2: Scale Pods — Watch BIG-IP Update
+### Demo A2: Deploy App and Watch BIG-IP Auto-Configure
+
+**Who:** DevOps (terminal)
+
+> "Now I deploy an app. Watch BIG-IP — CIS will automatically create the VIP and pool."
+
+**Option 1 — AS3 ConfigMap:**
+```bash
+# Deploy the app with AS3 labels
+kubectl apply -f manifests/cis-standalone/app-service-as3.yaml
+
+# Deploy the AS3 declaration — this tells CIS to create the BIG-IP VIP
+kubectl apply -f manifests/cis-standalone/as3-configmap.yaml
+
+# Show the service and pods
+kubectl get svc f5-hello-world-web
+kubectl get pods -l app=f5-hello-world -o wide
+```
+
+**Option 2 — F5 Ingress Annotations:**
+```bash
+# Deploy the app
+kubectl apply -f manifests/cis-standalone/app-service-as3.yaml
+
+# Deploy the Ingress with F5 annotations — CIS reads these and creates the BIG-IP VIP
+kubectl apply -f manifests/cis-standalone/ingress-f5.yaml
+
+# Show the service and pods
+kubectl get svc f5-hello-world-web
+kubectl get pods -l app=f5-hello-world -o wide
+```
+
+**Show on BIG-IP (switch to audience):**
+1. **Local Traffic → Virtual Servers** — a VS appeared automatically!
+   - AS3 ConfigMap: check the `AS3` partition
+   - F5 Ingress: check the `kubernetes` partition
+2. Click into the **Pool → Members** — show pod IPs
+3. "These are actual pod IPs on the overlay network. BIG-IP joined the Flannel VXLAN, so it routes directly to pods. CIS did all of this — no manual config."
+
+**Test it:**
+```bash
+curl -s http://10.1.20.10
+```
+
+---
+
+### Demo A3: Scale Pods — Watch BIG-IP Update
 
 **Who:** DevOps (terminal)
 
@@ -107,9 +139,9 @@ kubectl scale deployment f5-hello-world-web --replicas=2
 
 ---
 
-### Demo A3: Show the Limitation
+### Demo A4: Show the Limitation
 
-> "This works great for simple apps. But here's the challenge — every new app needs a new BIG-IP VIP or a new AS3 declaration or Ingress resource with F5 annotations. DevOps has to know BIG-IP details like partition names and VIP addresses. Let me show you what happens when we add NGINX Ingress Controller to the picture."
+> "This works great for simple apps. But here's the challenge — every new app needs a new BIG-IP VIP or a new AS3 declaration. DevOps has to know BIG-IP details like partition names and VIP addresses. Let me show you what happens when we add NGINX Ingress Controller to the picture."
 
 **Talking point for transition:**
 > "In a microservices world, you might have 50 services. Do you want 50 BIG-IP VIPs? Or one VIP with intelligent L7 routing behind it? That's where Mode B comes in."
@@ -120,7 +152,28 @@ kubectl scale deployment f5-hello-world-web --replicas=2
 
 > **Story:** "NetOps owns BIG-IP security. DevOps deploys at Kubernetes speed. Neither waits for the other."
 
-> **Note:** If transitioning from Mode A live, you'll need to delete the standalone CIS and deploy the IngressLink CIS. For a smooth demo, have Mode B pre-built.
+> **Note:** If transitioning from Mode A live, you'll need to delete the standalone CIS and deploy the IngressLink CIS. For a smooth demo, have Mode B pre-built on a separate environment.
+
+### Clean Slate Setup (Mode B)
+
+Run these commands before starting the demo to ensure a clean state:
+
+```bash
+# Delete any existing apps and WAF policy
+kubectl delete -f manifests/apps/ 2>/dev/null
+kubectl delete -f manifests/waf/waf-policy.yaml 2>/dev/null
+
+# Wait for CIS to clean up BIG-IP
+sleep 10
+
+# Verify clean — no app pods should be running
+kubectl get pods
+
+# Verify infrastructure is healthy
+kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
+kubectl get pods -n nginx-ingress
+kubectl get il -n nginx-ingress
+```
 
 ---
 
@@ -139,14 +192,15 @@ kubectl scale deployment f5-hello-world-web --replicas=2
 
 **Show on terminal:**
 ```bash
-# Show all the pieces
-kubectl get pods --all-namespaces | grep -E "bigip|nginx"
+# Show CIS and NGINX IC are running
+kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
+kubectl get pods -n nginx-ingress
 
-# Show the IngressLink resource
-kubectl get il -n nginx-ingress -o yaml
+# Show the IngressLink — this is the bridge between BIG-IP and NGINX IC
+kubectl get il -n nginx-ingress
 
-# Show NGINX IC is the only thing BIG-IP knows about
-kubectl get pods -n nginx-ingress -o wide
+# No app services deployed yet
+kubectl get svc
 ```
 
 ---
@@ -155,21 +209,19 @@ kubectl get pods -n nginx-ingress -o wide
 
 **Who:** DevOps (terminal)
 
-> "Now I'm DevOps. I deploy a standard Kubernetes app with a standard Ingress. I don't touch BIG-IP. Each app gets its own hostname — coffee.example.com, tea.example.com — so teams deploy independently without stepping on each other."
+> "Now I'm DevOps. I deploy a standard Kubernetes app. I don't touch BIG-IP. Each app gets its own hostname — coffee.example.com, tea.example.com — so teams deploy independently."
 
 ```bash
 # Deploy coffee app — Deployment, Service, and Ingress
 kubectl apply -f manifests/apps/app1-coffee.yaml
 
-# Watch pods come up
+# Watch the service come up
+kubectl get svc coffee-svc
 kubectl get pods -l app=coffee -w
 # (Ctrl+C once running)
 
-# Show the Ingress
-kubectl get ingress coffee-ingress
-
 # Test through the BIG-IP VIP
-curl -s -H "Host: coffee.example.com" http://10.1.20.10/
+curl -s -H "Host: coffee.example.com" http://10.1.20.50/
 ```
 
 > "Traffic flows: Client → BIG-IP VIP → NGINX IC → Coffee pods. I didn't open a ticket, I didn't log into BIG-IP. Each app gets its own hostname and Ingress — completely independent."
@@ -198,16 +250,19 @@ curl -s -H "Host: coffee.example.com" http://10.1.20.10/
 # Deploy tea app — its own Deployment, Service, and Ingress
 kubectl apply -f manifests/apps/app2-tea.yaml
 
+# Show the new service
+kubectl get svc tea-svc
+
 # Test immediately — no waiting!
-curl -s -H "Host: tea.example.com" http://10.1.20.10/
+curl -s -H "Host: tea.example.com" http://10.1.20.50/
 ```
 
-> "Live in seconds. Same VIP, same BIG-IP config. Tea has its own hostname and Ingress — completely independent from coffee. NGINX IC routes by hostname: coffee.example.com → coffee pods, tea.example.com → tea pods. DevOps velocity + NetOps control."
+> "Live in seconds. Same VIP, same BIG-IP config. Tea has its own hostname — completely independent from coffee. NGINX IC routes by hostname: coffee.example.com → coffee pods, tea.example.com → tea pods. DevOps velocity + NetOps control."
 
 ```bash
 # Hit both services through the same VIP
-curl -s -H "Host: coffee.example.com" http://10.1.20.10/
-curl -s -H "Host: tea.example.com" http://10.1.20.10/
+curl -s -H "Host: coffee.example.com" http://10.1.20.50/
+curl -s -H "Host: tea.example.com" http://10.1.20.50/
 ```
 
 ---
@@ -235,11 +290,11 @@ kubectl apply -f manifests/waf/waf-policy.yaml
 **Test WAF:**
 ```bash
 # Normal request — works fine
-curl -s -H "Host: coffee.example.com" http://10.1.20.10/coffee
+curl -s -H "Host: coffee.example.com" http://10.1.20.50/
 
 # XSS attack — WAF blocks it
 curl -s -H "Host: coffee.example.com" \
-  "http://10.1.20.10/coffee?input=<script>alert(1)</script>"
+  "http://10.1.20.50/?input=<script>alert(1)</script>"
 ```
 
 **Show on BIG-IP:** Security → Event Logs → Application → Requests
@@ -258,13 +313,13 @@ curl -s -H "Host: coffee.example.com" \
 # Deploy coffee v2 alongside v1
 kubectl apply -f manifests/apps/canary-coffee-v2.yaml
 
-# Show both versions
+# Show both versions running
 kubectl get pods -l app=coffee
 kubectl get pods -l app=coffee-v2
 
 # Traffic split based on pod count (2 v1 pods + 1 v2 pod ≈ 67/33)
 for i in $(seq 1 10); do
-  curl -s -H "Host: coffee.example.com" http://10.1.20.10/coffee | grep "Server name"
+  curl -s -H "Host: coffee.example.com" http://10.1.20.50/ | grep "Server name"
 done
 ```
 
@@ -305,7 +360,7 @@ kubectl patch il vs-ingresslink -n nginx-ingress \
 # Revert
 kubectl patch il vs-ingresslink -n nginx-ingress \
   --type='merge' \
-  -p '{"spec":{"virtualServerAddress":"10.1.20.10"}}'
+  -p '{"spec":{"virtualServerAddress":"10.1.20.50"}}'
 ```
 
 ---
@@ -320,27 +375,6 @@ kubectl patch il vs-ingresslink -n nginx-ingress \
 >
 > **Infrastructure as Code:**
 > "Everything is declarative YAML — Git-friendly, CI/CD-ready, auditable. This works with BIG-IP, not just cloud-native tools."
-
----
-
-## Reset Between Demos
-
-### Reset Mode A
-```bash
-kubectl delete -f manifests/cis-standalone/as3-configmap.yaml
-kubectl delete -f manifests/cis-standalone/app-service-as3.yaml
-sleep 5
-kubectl apply -f manifests/cis-standalone/app-service-as3.yaml
-kubectl apply -f manifests/cis-standalone/as3-configmap.yaml
-```
-
-### Reset Mode B
-```bash
-kubectl delete -f manifests/apps/
-kubectl delete -f manifests/waf/waf-policy.yaml
-sleep 10
-# Re-deploy starting from Demo B2
-```
 
 ---
 
