@@ -7,6 +7,9 @@
 #
 # This is the "aha moment" in the demo: deploy tea, and it's
 # reachable through the same VIP within seconds.
+#
+# Uses its own hostname (tea.example.com) — independent Ingress,
+# no coordination with coffee required.
 # ============================================================
 
 apiVersion: apps/v1
@@ -56,23 +59,19 @@ spec:
 
 ---
 
-# Ingress for tea — same host, different path
-# NGINX IC routes /tea to tea-svc, /coffee to coffee-svc
+# Ingress routes tea.example.com → tea-svc
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: tea-ingress
   namespace: default
-  annotations:
-    # Mergeable Ingress: "minion" joins the cafe.example.com master
-    nginx.org/mergeable-ingress-type: "minion"
 spec:
   ingressClassName: nginx
   rules:
-    - host: cafe.example.com
+    - host: tea.example.com
       http:
         paths:
-          - path: /tea
+          - path: /
             pathType: Prefix
             backend:
               service:

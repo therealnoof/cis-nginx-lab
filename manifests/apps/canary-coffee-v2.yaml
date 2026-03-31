@@ -75,22 +75,17 @@ kind: Ingress
 metadata:
   name: coffee-v2-canary
   namespace: default
-  annotations:
-    # ---------------------------------------------------------
-    # Canary annotations — NGINX IC evaluates these to decide
-    # whether to send traffic to the canary backend
-    # ---------------------------------------------------------
-    nginx.org/mergeable-ingress-type: "minion"
+  annotations: {}
     # For weight-based canary with NGINX IC, you can use
     # the VirtualServer CRD instead (shown in DEMO_GUIDE.md)
     # or adjust replica counts for a simple ratio
 spec:
   ingressClassName: nginx
   rules:
-    - host: cafe.example.com
+    - host: coffee.example.com
       http:
         paths:
-          - path: /coffee
+          - path: /
             pathType: Prefix
             backend:
               service:

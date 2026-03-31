@@ -155,33 +155,24 @@ kubectl get pods -n nginx-ingress -o wide
 
 **Who:** DevOps (terminal)
 
-> "Now I'm DevOps. I deploy a standard Kubernetes app with a standard Ingress. I don't touch BIG-IP."
-
-> "One thing to note about NGINX Plus IC — when multiple services share the same hostname, we use a **mergeable Ingress** pattern. There's a 'master' Ingress that defines the host, and each service gets a 'minion' Ingress that defines its path. This lets teams independently deploy services under the same domain without stepping on each other."
+> "Now I'm DevOps. I deploy a standard Kubernetes app with a standard Ingress. I don't touch BIG-IP. Each app gets its own hostname — coffee.example.com, tea.example.com — so teams deploy independently without stepping on each other."
 
 ```bash
-# Show the Ingress annotations before deploying
-cat manifests/apps/app1-coffee.yaml | grep -A2 "annotations"
-
-# You'll see two Ingress resources:
-#   cafe-master-ingress — type: "master", defines host cafe.example.com (no paths)
-#   coffee-ingress      — type: "minion", defines path /coffee
-
-# Deploy coffee app (creates master + coffee minion)
+# Deploy coffee app — Deployment, Service, and Ingress
 kubectl apply -f manifests/apps/app1-coffee.yaml
 
 # Watch pods come up
 kubectl get pods -l app=coffee -w
 # (Ctrl+C once running)
 
-# Show the Ingress resources
-kubectl get ingress
+# Show the Ingress
+kubectl get ingress coffee-ingress
 
 # Test through the BIG-IP VIP
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
+curl -s -H "Host: coffee.example.com" http://10.1.20.10/
 ```
 
-> "Traffic flows: Client → BIG-IP VIP → NGINX IC → Coffee pods. I didn't open a ticket, I didn't log into BIG-IP. The mergeable Ingress pattern means other teams can add their services under cafe.example.com without modifying my Ingress."
+> "Traffic flows: Client → BIG-IP VIP → NGINX IC → Coffee pods. I didn't open a ticket, I didn't log into BIG-IP. Each app gets its own hostname and Ingress — completely independent."
 
 ---
 
@@ -204,22 +195,19 @@ curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
 > "Here's the big moment. I need to deploy a second microservice. In the old world: ticket to NetOps, wait for approval, change window. Watch what happens now."
 
 ```bash
-# Show tea's Ingress annotation — it's a "minion" joining the same host
-cat manifests/apps/app2-tea.yaml | grep -A2 "annotations"
-
-# Deploy tea app (adds a minion Ingress for /tea)
+# Deploy tea app — its own Deployment, Service, and Ingress
 kubectl apply -f manifests/apps/app2-tea.yaml
 
 # Test immediately — no waiting!
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/tea
+curl -s -H "Host: tea.example.com" http://10.1.20.10/
 ```
 
-> "Live in seconds. Same VIP, same BIG-IP config. Tea joined as a 'minion' Ingress under the same cafe.example.com host. NGINX IC routes /coffee to coffee pods, /tea to tea pods. DevOps velocity + NetOps control."
+> "Live in seconds. Same VIP, same BIG-IP config. Tea has its own hostname and Ingress — completely independent from coffee. NGINX IC routes by hostname: coffee.example.com → coffee pods, tea.example.com → tea pods. DevOps velocity + NetOps control."
 
 ```bash
-# Hit both services
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/tea
+# Hit both services through the same VIP
+curl -s -H "Host: coffee.example.com" http://10.1.20.10/
+curl -s -H "Host: tea.example.com" http://10.1.20.10/
 ```
 
 ---
@@ -247,10 +235,10 @@ kubectl apply -f manifests/waf/waf-policy.yaml
 **Test WAF:**
 ```bash
 # Normal request — works fine
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
+curl -s -H "Host: coffee.example.com" http://10.1.20.10/coffee
 
 # XSS attack — WAF blocks it
-curl -s -H "Host: cafe.example.com" \
+curl -s -H "Host: coffee.example.com" \
   "http://10.1.20.10/coffee?input=<script>alert(1)</script>"
 ```
 
@@ -276,7 +264,7 @@ kubectl get pods -l app=coffee-v2
 
 # Traffic split based on pod count (2 v1 pods + 1 v2 pod ≈ 67/33)
 for i in $(seq 1 10); do
-  curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee | grep "Server name"
+  curl -s -H "Host: coffee.example.com" http://10.1.20.10/coffee | grep "Server name"
 done
 ```
 

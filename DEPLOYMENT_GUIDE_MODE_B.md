@@ -213,7 +213,7 @@ kubectl get svc coffee-svc
 kubectl get ingress coffee-ingress
 
 # Test through the BIG-IP VIP
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
+curl -s -H "Host: coffee.example.com" http://10.1.20.10/
 
 # Expected: Response from one of the coffee pods
 ```
@@ -230,10 +230,10 @@ kubectl get pods -l app=tea
 kubectl get ingress tea-ingress
 
 # Test immediately — should work through the same VIP!
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/tea
+curl -s -H "Host: tea.example.com" http://10.1.20.10/
 ```
 
-> **Key point:** No BIG-IP changes were needed. DevOps deployed a new service and it was instantly reachable. NGINX IC handles L7 routing (/coffee → coffee pods, /tea → tea pods). BIG-IP VIP and pool stayed exactly the same.
+> **Key point:** No BIG-IP changes were needed. DevOps deployed a new service and it was instantly reachable. NGINX IC routes by hostname (coffee.example.com → coffee pods, tea.example.com → tea pods). BIG-IP VIP and pool stayed exactly the same.
 
 ---
 
@@ -266,11 +266,11 @@ kubectl apply -f manifests/waf/waf-policy.yaml
 **Test:**
 ```bash
 # Normal request — should work fine
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
+curl -s -H "Host: coffee.example.com" http://10.1.20.10/
 
 # Attack request — WAF should block this
-curl -s -H "Host: cafe.example.com" \
-  "http://10.1.20.10/coffee?param=<script>alert('xss')</script>"
+curl -s -H "Host: coffee.example.com" \
+  "http://10.1.20.10/?param=<script>alert('xss')</script>"
 ```
 
 Check **Security → Event Logs → Application → Requests** on BIG-IP to see the blocked attempt.
@@ -303,10 +303,10 @@ echo "=== Services ==="
 kubectl get svc --all-namespaces | grep -E "coffee|tea|nginx"
 
 echo "=== Coffee through VIP ==="
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
+curl -s -H "Host: coffee.example.com" http://10.1.20.10/
 
 echo "=== Tea through VIP ==="
-curl -s -H "Host: cafe.example.com" http://10.1.20.10/tea
+curl -s -H "Host: tea.example.com" http://10.1.20.10/
 ```
 
 **BIG-IP GUI checks:**

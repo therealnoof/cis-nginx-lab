@@ -6,6 +6,8 @@
 # BIG-IP → NGINX IC → App pipeline.
 #
 # Includes: Deployment, Service, and Ingress
+# Uses its own hostname (coffee.example.com) so each app
+# gets an independent Ingress — no mergeable annotations needed.
 # ============================================================
 
 apiVersion: apps/v1
@@ -58,38 +60,19 @@ spec:
 
 ---
 
-# Master Ingress — defines the host for cafe.example.com
-# The master has NO paths — paths are defined in minion Ingresses
-# (coffee-minion-ingress, tea-ingress, etc.)
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: cafe-master-ingress
-  namespace: default
-  annotations:
-    nginx.org/mergeable-ingress-type: "master"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: cafe.example.com           # Host only — no paths
-
----
-
-# Minion Ingress for coffee — routes /coffee to coffee-svc
+# Ingress routes coffee.example.com → coffee-svc
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: coffee-ingress
   namespace: default
-  annotations:
-    nginx.org/mergeable-ingress-type: "minion"
 spec:
   ingressClassName: nginx
   rules:
-    - host: cafe.example.com
+    - host: coffee.example.com
       http:
         paths:
-          - path: /coffee
+          - path: /
             pathType: Prefix
             backend:
               service:
