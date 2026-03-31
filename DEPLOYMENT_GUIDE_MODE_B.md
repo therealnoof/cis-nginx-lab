@@ -110,12 +110,16 @@ kubectl get svc -n nginx-ingress
 
 ## Step 3: Deploy CIS
 
-### 3a. Install the IngressLink CRD
+### 3a. Install F5 CIS CRDs
+
+CIS needs several Custom Resource Definitions (VirtualServer, IngressLink, Policy, ExternalDNS, etc.). These are included in the repo so they survive rebuilds.
 
 ```bash
-# Check if CRDs already exist (newer CIS versions may bundle them)
-kubectl get crd ingresslinks.cis.f5.com 2>/dev/null || \
-  kubectl apply -f manifests/cis-ingresslink/ingresslink-crd.yaml
+# Install all F5 CIS CRDs
+kubectl apply -f manifests/cis/f5-cis-crds.yaml
+
+# Verify
+kubectl get crd | grep cis.f5.com
 ```
 
 ### 3b. Edit CIS Deployment for Your Environment

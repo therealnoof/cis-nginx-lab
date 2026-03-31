@@ -73,7 +73,8 @@ cis-nginx-lab/
 └── manifests/
     ├── cis/
     │   ├── cis-rbac.yaml                         <- ServiceAccount + ClusterRole (shared)
-    │   └── bigip-login-secret.yaml               <- TEMPLATE — fill in creds (shared)
+    │   ├── bigip-login-secret.yaml               <- TEMPLATE — fill in creds (shared)
+    │   └── f5-cis-crds.yaml                      <- All F5 CIS CRDs (shared)
     │
     ├── cis-standalone/                           <- MODE A: BIG-IP → Pods
     │   ├── cis-deployment-standalone.yaml        <- CIS with --custom-resource-mode=false
