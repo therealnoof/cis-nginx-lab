@@ -37,11 +37,13 @@ kubectl get pods -n nginx-ingress  # Mode B only
 > "Let me show you the simplest integration. BIG-IP has a VIP, and CIS automatically populated the pool with pod IPs from Kubernetes. No NGINX, no extra layers — BIG-IP talks directly to pods via a VXLAN tunnel."
 
 **Show on BIG-IP:**
-1. **Local Traffic → Virtual Servers** — show the VS in the `AS3` partition
+1. **Local Traffic → Virtual Servers** — show the VS
+   - If using AS3 ConfigMap: check the `AS3` partition
+   - If using F5 Ingress annotations: check the `kubernetes` partition
 2. Click into the **Pool → Members** — show pod IPs
 3. "These are actual pod IPs on the overlay network. BIG-IP joined the Flannel VXLAN, so it routes directly to pods."
 
-**Show on terminal:**
+**Show on terminal (Option 1 — AS3 ConfigMap):**
 ```bash
 # Show what CIS is watching
 kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
@@ -49,11 +51,34 @@ kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
 # Show the AS3 ConfigMap that defined the VIP
 kubectl get configmap f5-as3-declaration -o yaml | head -30
 
-# Show the app pods
-kubectl get pods -l app=f5-hello-world -o wide
+# Show the Service with AS3 labels — these bind the Service to the AS3 pool
+kubectl get svc f5-hello-world-web --show-labels
 
-# The pod IPs should match what BIG-IP shows in the pool
+# Show the app pods — pod IPs should match BIG-IP pool members
+kubectl get pods -l app=f5-hello-world -o wide
 ```
+
+> "The AS3 ConfigMap is a JSON declaration that tells BIG-IP exactly what to create — VIP, pool, monitors. The Service has special labels (`cis.f5.com/as3-tenant`, `cis.f5.com/as3-app`, `cis.f5.com/as3-pool`) that tell CIS which pool to populate with pod IPs."
+
+**Show on terminal (Option 2 — F5 Ingress Annotations):**
+```bash
+# Show what CIS is watching
+kubectl get pods -n kube-system -l app=k8s-bigip-ctlr
+
+# Show the Ingress with F5 annotations
+kubectl get ingress f5-hello-world-ingress -o yaml | grep -A10 "annotations"
+
+# Key annotations:
+#   virtual-server.f5.com/ip        → BIG-IP VIP address
+#   virtual-server.f5.com/partition  → BIG-IP partition
+#   virtual-server.f5.com/http-port  → listener port
+#   virtual-server.f5.com/balance    → load balancing method
+
+# Show the app pods — pod IPs should match BIG-IP pool members
+kubectl get pods -l app=f5-hello-world -o wide
+```
+
+> "The F5 Ingress annotations are a simpler alternative to AS3. You use a standard Kubernetes Ingress with F5-specific annotations to tell CIS how to configure BIG-IP — VIP address, partition, port, and load balancing method. CIS reads the annotations and programs BIG-IP automatically."
 
 ---
 
@@ -84,7 +109,7 @@ kubectl scale deployment f5-hello-world-web --replicas=2
 
 ### Demo A3: Show the Limitation
 
-> "This works great for simple apps. But here's the challenge — every new app needs a new BIG-IP VIP or a new AS3 declaration. Let me show you what happens when we add NGINX Ingress Controller to the picture."
+> "This works great for simple apps. But here's the challenge — every new app needs a new BIG-IP VIP or a new AS3 declaration or Ingress resource with F5 annotations. DevOps has to know BIG-IP details like partition names and VIP addresses. Let me show you what happens when we add NGINX Ingress Controller to the picture."
 
 **Talking point for transition:**
 > "In a microservices world, you might have 50 services. Do you want 50 BIG-IP VIPs? Or one VIP with intelligent L7 routing behind it? That's where Mode B comes in."
