@@ -132,19 +132,31 @@ kubectl get pods -n nginx-ingress -o wide
 
 > "Now I'm DevOps. I deploy a standard Kubernetes app with a standard Ingress. I don't touch BIG-IP."
 
+> "One thing to note about NGINX Plus IC — when multiple services share the same hostname, we use a **mergeable Ingress** pattern. There's a 'master' Ingress that defines the host, and each service gets a 'minion' Ingress that defines its path. This lets teams independently deploy services under the same domain without stepping on each other."
+
 ```bash
-# Deploy coffee app
+# Show the Ingress annotations before deploying
+cat manifests/apps/app1-coffee.yaml | grep -A2 "annotations"
+
+# You'll see two Ingress resources:
+#   cafe-master-ingress — type: "master", defines host cafe.example.com (no paths)
+#   coffee-ingress      — type: "minion", defines path /coffee
+
+# Deploy coffee app (creates master + coffee minion)
 kubectl apply -f manifests/apps/app1-coffee.yaml
 
 # Watch pods come up
 kubectl get pods -l app=coffee -w
 # (Ctrl+C once running)
 
+# Show the Ingress resources
+kubectl get ingress
+
 # Test through the BIG-IP VIP
 curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
 ```
 
-> "Traffic flows: Client → BIG-IP VIP → NGINX IC → Coffee pods. I didn't open a ticket, I didn't log into BIG-IP."
+> "Traffic flows: Client → BIG-IP VIP → NGINX IC → Coffee pods. I didn't open a ticket, I didn't log into BIG-IP. The mergeable Ingress pattern means other teams can add their services under cafe.example.com without modifying my Ingress."
 
 ---
 
@@ -167,14 +179,17 @@ curl -s -H "Host: cafe.example.com" http://10.1.20.10/coffee
 > "Here's the big moment. I need to deploy a second microservice. In the old world: ticket to NetOps, wait for approval, change window. Watch what happens now."
 
 ```bash
-# Deploy tea app
+# Show tea's Ingress annotation — it's a "minion" joining the same host
+cat manifests/apps/app2-tea.yaml | grep -A2 "annotations"
+
+# Deploy tea app (adds a minion Ingress for /tea)
 kubectl apply -f manifests/apps/app2-tea.yaml
 
 # Test immediately — no waiting!
 curl -s -H "Host: cafe.example.com" http://10.1.20.10/tea
 ```
 
-> "Live in seconds. Same VIP, same BIG-IP config. NGINX IC routes /coffee to coffee pods, /tea to tea pods. DevOps velocity + NetOps control."
+> "Live in seconds. Same VIP, same BIG-IP config. Tea joined as a 'minion' Ingress under the same cafe.example.com host. NGINX IC routes /coffee to coffee pods, /tea to tea pods. DevOps velocity + NetOps control."
 
 ```bash
 # Hit both services
