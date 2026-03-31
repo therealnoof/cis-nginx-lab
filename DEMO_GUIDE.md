@@ -32,7 +32,9 @@ cd /home/ubuntu/cis-nginx-lab
 
 # Delete any existing apps and configs
 kubectl delete -f manifests/cis-standalone/ingress-f5.yaml 2>/dev/null
+kubectl delete -f manifests/cis-standalone/as3-configmap-app2.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/as3-configmap.yaml 2>/dev/null
+kubectl delete -f manifests/cis-standalone/app2-service-as3.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/app-service-as3.yaml 2>/dev/null
 
 # Wait for CIS to clean up BIG-IP
@@ -142,12 +144,49 @@ kubectl scale deployment f5-hello-world-web --replicas=2
 
 ---
 
-### Demo A4: Show the Limitation
+### Demo A4: Deploy Second App — Show the Overhead
 
-> "This works great for simple apps. But here's the challenge — every new app needs a new BIG-IP VIP or a new AS3 declaration. DevOps has to know BIG-IP details like partition names and VIP addresses. Let me show you what happens when we add NGINX Ingress Controller to the picture."
+**Who:** DevOps (terminal)
+
+> "Now I need to deploy a second app. Watch what's required — I can't just deploy a Deployment and Service. I need to update the AS3 declaration with a new Application block, a new pool, and a new port. DevOps has to know BIG-IP internals."
+
+```bash
+# Deploy the second app
+kubectl apply -f manifests/cis-standalone/app2-service-as3.yaml
+
+# Show it's running
+kubectl get svc f5-hello-world-web2
+kubectl get pods -l app=f5-hello-world-2
+
+# Now update the AS3 declaration to add a second VIP
+# This replaces the ConfigMap with one that has BOTH apps
+kubectl apply -f manifests/cis-standalone/as3-configmap-app2.yaml
+```
+
+**Show on BIG-IP:**
+1. **Local Traffic → Virtual Servers** (in `AS3` partition) — now TWO VS entries
+2. App 1 on port 80, App 2 on port 8081
+3. Each has its own pool with its own pod IPs
+
+**Test both:**
+```bash
+# App 1 — port 80
+curl -s http://10.1.20.10
+
+# App 2 — port 8081
+curl -s http://10.1.20.10:8081
+```
+
+> "It works, but look at what I had to do — create a new Service with specific AS3 labels, update the AS3 ConfigMap JSON to add a new Application block, pick a new port. DevOps had to know about AS3 tenants, pool names, and BIG-IP port allocation. That doesn't scale."
+
+---
+
+### Demo A5: The Limitation — Transition to Mode B
+
+> "Imagine 50 microservices. That's 50 AS3 application blocks, 50 pool definitions, port management, and every DevOps team needs to understand BIG-IP internals. Let me show you what happens when we add NGINX Ingress Controller to the picture."
 
 **Talking point for transition:**
-> "In a microservices world, you might have 50 services. Do you want 50 BIG-IP VIPs? Or one VIP with intelligent L7 routing behind it? That's where Mode B comes in."
+> "In a microservices world, you want one VIP with intelligent L7 routing behind it. DevOps deploys a standard Kubernetes Ingress with a hostname — no BIG-IP knowledge needed. That's Mode B."
 
 ---
 

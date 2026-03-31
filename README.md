@@ -79,7 +79,9 @@ cis-nginx-lab/
     ├── cis-standalone/                           <- MODE A: BIG-IP → Pods
     │   ├── cis-deployment-standalone.yaml        <- CIS with --custom-resource-mode=false
     │   ├── as3-configmap.yaml                    <- AS3 declaration for BIG-IP VIP
-    │   ├── app-service-as3.yaml                  <- App + Service with AS3 labels
+    │   ├── app-service-as3.yaml                  <- App 1 + Service with AS3 labels
+    │   ├── app2-service-as3.yaml                 <- App 2 + Service (shows Mode A overhead)
+    │   ├── as3-configmap-app2.yaml               <- AS3 declaration with both apps
     │   └── ingress-f5.yaml                       <- Alternative: F5 Ingress annotations
     │
     ├── cis-ingresslink/                          <- MODE B: BIG-IP → NGINX IC → Pods

@@ -1,0 +1,89 @@
+# ============================================================
+# AS3 ConfigMap — Second App VIP (Standalone Mode)
+# ------------------------------------------------------------
+# This is a SECOND AS3 declaration for a second app. Notice
+# that we need:
+#   - A new Application block (A2) with a different pool name
+#   - A different VIP address (or different port on the same VIP)
+#   - The Service labels must match the new pool name
+#
+# This is the Mode A limitation — every new app needs explicit
+# BIG-IP config. Compare to Mode B where DevOps just deploys
+# a standard K8s Ingress with a hostname.
+#
+# NOTE: AS3 is declarative — the entire tenant is replaced on
+# each POST. This ConfigMap includes BOTH App 1 and App 2 in
+# the same tenant so App 1 doesn't get deleted.
+# ============================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: f5-as3-declaration
+  namespace: default
+  labels:
+    f5type: virtual-server
+    as3: "true"
+data:
+  template: |
+    {
+        "class": "AS3",
+        "declaration": {
+            "class": "ADC",
+            "schemaVersion": "3.18.0",
+            "id": "cis-nginx-lab-standalone-2apps",
+            "label": "CIS Standalone - Two Apps",
+            "remark": "Two BIG-IP VIPs pointing directly to app pods",
+            "AS3": {
+                "class": "Tenant",
+                "A1": {
+                    "class": "Application",
+                    "template": "http",
+                    "serviceMain": {
+                        "class": "Service_HTTP",
+                        "virtualAddresses": [
+                            "10.1.20.10"
+                        ],
+                        "virtualPort": 80,
+                        "pool": "web_pool"
+                    },
+                    "web_pool": {
+                        "class": "Pool",
+                        "monitors": [
+                            "http"
+                        ],
+                        "members": [
+                            {
+                                "servicePort": 8080,
+                                "serverAddresses": []
+                            }
+                        ]
+                    }
+                },
+                "A2": {
+                    "class": "Application",
+                    "template": "http",
+                    "serviceMain": {
+                        "class": "Service_HTTP",
+                        "virtualAddresses": [
+                            "10.1.20.10"
+                        ],
+                        "virtualPort": 8081,
+                        "pool": "web_pool2"
+                    },
+                    "web_pool2": {
+                        "class": "Pool",
+                        "monitors": [
+                            "http"
+                        ],
+                        "members": [
+                            {
+                                "servicePort": 8080,
+                                "serverAddresses": []
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }

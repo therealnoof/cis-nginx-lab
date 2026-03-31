@@ -1,0 +1,65 @@
+# ============================================================
+# App 2 Service with AS3 Labels — Standalone Mode
+# ------------------------------------------------------------
+# Second app to demonstrate Mode A's limitation: each new app
+# needs its own AS3 declaration, VIP, and BIG-IP-specific labels.
+#
+# Compare this to Mode B where a new app just needs a standard
+# K8s Ingress with a hostname — no BIG-IP details required.
+#
+# Label mapping (must match as3-configmap-app2.yaml):
+#   cis.f5.com/as3-tenant → "AS3"
+#   cis.f5.com/as3-app    → "A2"      (different from App 1's "A1")
+#   cis.f5.com/as3-pool   → "web_pool2"
+# ============================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: f5-hello-world-web2
+  namespace: default
+  labels:
+    app: f5-hello-world-2
+    cis.f5.com/as3-tenant: AS3         # Same tenant as App 1
+    cis.f5.com/as3-app: A2             # Different app name
+    cis.f5.com/as3-pool: web_pool2     # Different pool name
+spec:
+  selector:
+    app: f5-hello-world-2
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+
+---
+
+# Second hello-world app deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: f5-hello-world-web2
+  namespace: default
+  labels:
+    app: f5-hello-world-2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: f5-hello-world-2
+  template:
+    metadata:
+      labels:
+        app: f5-hello-world-2
+    spec:
+      containers:
+        - name: f5-hello-world-2
+          image: f5devcentral/f5-hello-world
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
