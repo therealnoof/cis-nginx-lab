@@ -1,0 +1,61 @@
+# ============================================================
+# ExternalDNS CRD — GSLB for Coffee App
+# ------------------------------------------------------------
+# This CRD tells CIS to create a Wide IP on BIG-IP DNS (GTM)
+# for coffee.example.com. BIG-IP DNS will respond to DNS
+# queries with the VIP address(es) from the GSLB pool(s).
+#
+# How it works:
+#   1. CIS reads this ExternalDNS resource
+#   2. CIS creates a Wide IP on BIG-IP GTM for the domainName
+#   3. CIS creates GSLB pool(s) with the LTM virtual server(s)
+#      as pool members
+#   4. BIG-IP DNS answers queries for coffee.example.com with
+#      the appropriate VIP based on the load balance method
+#
+# Prerequisites on BIG-IP DNS (GTM):
+#   - DNS/GTM module provisioned
+#   - Data Center(s) created
+#   - GTM Server(s) created (referencing each BIG-IP LTM)
+#   - DNS Listener on port 53
+#
+# *** EDIT dataServerName TO MATCH YOUR GTM SERVER NAMES ***
+# ============================================================
+
+apiVersion: cis.f5.com/v1
+kind: ExternalDNS
+metadata:
+  name: coffee-edns
+  namespace: default
+spec:
+  # FQDN for the Wide IP — clients resolve this via BIG-IP DNS
+  domainName: coffee.example.com
+  dnsRecordType: A
+  loadBalanceMethod: round-robin       # Wide IP LB method across pools
+
+  pools:
+    # ---------------------------------------------------------
+    # Site A — Mode A BIG-IP (standalone, direct to pods)
+    # ---------------------------------------------------------
+    - dataServerName: /Common/SiteA_Server  # ← Must match GTM Server name
+      dnsRecordType: A
+      loadBalanceMethod: round-robin
+      monitor:
+        type: http
+        send: "GET / HTTP/1.1\r\nHost: coffee.example.com\r\n\r\n"
+        recv: "200"
+        interval: 10
+        timeout: 31
+
+    # ---------------------------------------------------------
+    # Site B — Mode B BIG-IP (IngressLink, NGINX IC)
+    # ---------------------------------------------------------
+    - dataServerName: /Common/SiteB_Server  # ← Must match GTM Server name
+      dnsRecordType: A
+      loadBalanceMethod: round-robin
+      monitor:
+        type: http
+        send: "GET / HTTP/1.1\r\nHost: coffee.example.com\r\n\r\n"
+        recv: "200"
+        interval: 10
+        timeout: 31

@@ -63,6 +63,13 @@ spec:
             - "--log-level=INFO"
             - "--namespace=nginx-ingress"              # Watch NGINX IC namespace
             - "--namespace=default"                    # Watch default namespace
+            # -------------------------------------------------------
+            # GSLB / ExternalDNS — uncomment these for GSLB demos
+            # GTM can be on the same or different BIG-IP as LTM
+            # -------------------------------------------------------
+            # - "--gtm-bigip-url=https://10.1.1.6"    # ← GTM BIG-IP mgmt IP
+            # - "--gtm-bigip-username=$(BIGIP_USERNAME)"
+            # - "--gtm-bigip-password=$(BIGIP_PASSWORD)"
           resources:
             requests:
               cpu: 100m

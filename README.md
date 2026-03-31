@@ -100,6 +100,10 @@ cis-nginx-lab/
     │   ├── app2-tea.yaml                         <- Tea app + Ingress
     │   └── canary-coffee-v2.yaml                 <- Canary deployment
     │
+    ├── gslb/                                     <- GSLB / ExternalDNS (both modes)
+    │   ├── externaldns-coffee.yaml               <- Wide IP for coffee.example.com
+    │   └── externaldns-tea.yaml                  <- Wide IP for tea.example.com
+    │
     └── waf/
         └── waf-policy.yaml                       <- WAF policy CRD (Mode B)
 ```
@@ -150,7 +154,7 @@ sudo bash k8s-nginx-install/k8s-install.sh
 | Phase | Description | Status |
 |-------|-------------|--------|
 | **Phase 1** | Core lab — CIS standalone + CIS with IngressLink | **Available** |
-| **Phase 2** | GSLB multi-site with DNS CRDs | Planned |
+| **Phase 2** | GSLB multi-site with ExternalDNS CRDs | **Available** |
 | **Phase 3** | mTLS between BIG-IP and NGINX IC | Planned |
 | **Phase 4** | GitOps pipeline with Argo CD | Planned |
 

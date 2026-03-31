@@ -447,6 +447,109 @@ kubectl patch il vs-ingresslink -n nginx-ingress \
 
 ---
 
+## Part 3: GSLB with ExternalDNS (Both Modes)
+
+> **Story:** "BIG-IP DNS provides global server load balancing across sites. CIS automates the Wide IP and GSLB pool creation — DevOps deploys an ExternalDNS CRD and BIG-IP DNS starts answering queries."
+
+> **Pre-requisite:** GSLB requires BIG-IP DNS (GTM) provisioned, with Data Centers, GTM Servers, and a DNS Listener configured. CIS deployments must include `--gtm-bigip-url` flags. See the Deployment Guide for setup.
+
+---
+
+### Demo G1: Show BIG-IP DNS Before
+
+**Who:** NetOps (BIG-IP GUI)
+
+> "BIG-IP DNS handles global server load balancing. Right now, no Wide IPs are configured — let's have CIS create them automatically from Kubernetes."
+
+**Show on BIG-IP:**
+1. **DNS → GSLB → Wide IPs** — empty (or show existing ones)
+2. **DNS → GSLB → Servers** — show the GTM Server objects (these are the prerequisites NetOps set up)
+3. "NetOps configured the data centers and servers. Now DevOps can create Wide IPs by deploying a simple CRD."
+
+---
+
+### Demo G2: Deploy ExternalDNS CRD
+
+**Who:** DevOps (terminal)
+
+> "I need coffee.example.com to resolve globally via BIG-IP DNS. I deploy an ExternalDNS CRD — that's it."
+
+```bash
+# Show what we're deploying — a simple YAML with a domain name and pool references
+cat manifests/gslb/externaldns-coffee.yaml
+
+# Deploy it
+kubectl apply -f manifests/gslb/externaldns-coffee.yaml
+
+# Show it's created
+kubectl get externaldns
+```
+
+**Show on BIG-IP DNS:**
+1. **DNS → GSLB → Wide IPs** — `coffee.example.com` appeared!
+2. Click into it → **Pools** — show the GSLB pool
+3. Click into the pool → **Members** — show the LTM virtual server as a pool member
+4. "CIS created the Wide IP, the GSLB pool, and linked it to the LTM virtual server. All from one YAML file."
+
+> "DevOps didn't log into BIG-IP DNS. They didn't configure GSLB pools or health monitors manually. One CRD, and the app is globally resolvable."
+
+---
+
+### Demo G3: Test DNS Resolution
+
+**Who:** DevOps (terminal)
+
+> "Let's query BIG-IP DNS directly and see it respond with our VIP address."
+
+```bash
+# Query BIG-IP DNS for coffee.example.com
+# Replace 10.1.1.4 with your BIG-IP DNS listener IP
+dig @10.1.1.4 coffee.example.com A +short
+
+# You should see the VIP address (e.g., 10.1.20.10 or 10.1.20.50)
+```
+
+> "BIG-IP DNS is answering with the VIP. In production, you'd delegate the DNS zone to BIG-IP so all clients resolve through it. With multiple sites, BIG-IP DNS would return the closest or healthiest VIP."
+
+---
+
+### Demo G4: Add Second Site (Multi-Site GSLB)
+
+**Who:** DevOps (terminal)
+
+> "Now watch what happens when we have both sites running the same app. BIG-IP DNS load balances across both — active-active GSLB."
+
+```bash
+# The coffee ExternalDNS already has two pool entries:
+#   - SiteA_Server (Mode A BIG-IP)
+#   - SiteB_Server (Mode B BIG-IP)
+# Both are active if both sites have the app deployed
+
+# Query DNS multiple times — you should see different VIPs
+dig @10.1.1.4 coffee.example.com A +short
+dig @10.1.1.4 coffee.example.com A +short
+dig @10.1.1.4 coffee.example.com A +short
+```
+
+**Show on BIG-IP DNS:**
+1. **Wide IP → Pools** — show both pools with green status
+2. "BIG-IP DNS is health-checking both sites. If one goes down, DNS automatically stops returning that VIP. Instant failover, no manual intervention."
+
+> "This is the full picture: CIS manages LTM virtual servers from Kubernetes CRDs, and CIS manages GTM Wide IPs from ExternalDNS CRDs. NetOps controls the GSLB topology and health policies. DevOps just deploys YAML."
+
+---
+
+### Demo G5: Clean Up GSLB
+
+```bash
+kubectl delete -f manifests/gslb/externaldns-coffee.yaml
+kubectl delete -f manifests/gslb/externaldns-tea.yaml 2>/dev/null
+```
+
+**Show on BIG-IP DNS:** Wide IPs are removed automatically.
+
+---
+
 ## Closing Talking Points
 
 > **Mode A vs Mode B:**
@@ -454,6 +557,9 @@ kubectl patch il vs-ingresslink -n nginx-ingress \
 >
 > **Two-Persona Model:**
 > "NetOps keeps full control of BIG-IP — VIPs, WAF, TLS, GSLB. DevOps deploys at Kubernetes speed. CIS is the bridge."
+>
+> **GSLB:**
+> "ExternalDNS CRDs let DevOps define global DNS entries the same way they define apps — declarative YAML. BIG-IP DNS handles the health checking, topology routing, and failover. Multi-site resilience from a single CRD."
 >
 > **Infrastructure as Code:**
 > "Everything is declarative YAML — Git-friendly, CI/CD-ready, auditable. This works with BIG-IP, not just cloud-native tools."

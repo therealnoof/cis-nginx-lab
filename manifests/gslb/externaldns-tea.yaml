@@ -1,0 +1,30 @@
+# ============================================================
+# ExternalDNS CRD — GSLB for Tea App (Mode B only)
+# ------------------------------------------------------------
+# Creates a Wide IP for tea.example.com on BIG-IP DNS.
+# Tea only exists in Mode B (IngressLink), so this has a
+# single pool entry for the Mode B BIG-IP.
+#
+# *** EDIT dataServerName TO MATCH YOUR GTM SERVER NAME ***
+# ============================================================
+
+apiVersion: cis.f5.com/v1
+kind: ExternalDNS
+metadata:
+  name: tea-edns
+  namespace: default
+spec:
+  domainName: tea.example.com
+  dnsRecordType: A
+  loadBalanceMethod: round-robin
+
+  pools:
+    - dataServerName: /Common/SiteB_Server  # ← Must match GTM Server name
+      dnsRecordType: A
+      loadBalanceMethod: round-robin
+      monitor:
+        type: http
+        send: "GET / HTTP/1.1\r\nHost: tea.example.com\r\n\r\n"
+        recv: "200"
+        interval: 10
+        timeout: 31

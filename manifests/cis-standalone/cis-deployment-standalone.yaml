@@ -65,6 +65,15 @@ spec:
             - "--agent=as3"                            # Use AS3 for declarations
             - "--log-as3-response=true"                # Log AS3 responses (debug)
             - "--as3-validation=true"                  # Validate AS3 before sending
+            # -------------------------------------------------------
+            # GSLB / ExternalDNS — uncomment these for GSLB demos
+            # NOTE: ExternalDNS requires --custom-resource-mode=true
+            # so you'll need to change the flag above from false to true
+            # and use VirtualServer CRDs instead of Ingress/AS3
+            # -------------------------------------------------------
+            # - "--gtm-bigip-url=https://10.1.1.4"    # ← GTM BIG-IP mgmt IP
+            # - "--gtm-bigip-username=$(BIGIP_USERNAME)"
+            # - "--gtm-bigip-password=$(BIGIP_PASSWORD)"
           resources:
             requests:
               cpu: 100m
