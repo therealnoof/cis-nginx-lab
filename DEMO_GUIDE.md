@@ -27,6 +27,9 @@ Have two windows open:
 Run these commands before starting the demo to ensure a clean state:
 
 ```bash
+# Make sure you're in the repo directory
+cd /home/ubuntu/cis-nginx-lab
+
 # Delete any existing apps and configs
 kubectl delete -f manifests/cis-standalone/ingress-f5.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/as3-configmap.yaml 2>/dev/null
@@ -159,6 +162,9 @@ kubectl scale deployment f5-hello-world-web --replicas=2
 Run these commands before starting the demo to ensure a clean state:
 
 ```bash
+# Make sure you're in the repo directory
+cd /home/ubuntu/cis-nginx-lab
+
 # Delete any existing apps and WAF policy
 kubectl delete -f manifests/apps/ 2>/dev/null
 kubectl delete -f manifests/waf/waf-policy.yaml 2>/dev/null
