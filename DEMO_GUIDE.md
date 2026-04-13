@@ -599,17 +599,41 @@ This is the most common "it looks deployed but traffic fails" scenario. CIS auth
    ```
    Empty FDB / no ARP entries for the pod CIDR means BIG-IP never joined the overlay. CIS writes FDB entries via the k8s API — check the CIS deployment args for `--flannel-name=fl-vxlan` and a matching `net tunnel` on BIG-IP.
 
-3. **Verify the self-IP on the tunnel is in the pod CIDR range:**
+3. **Compare VTEP MACs on both sides of the tunnel** (critical in AWS — instance reboots/replacements regenerate the Flannel VTEP MAC, and BIG-IP's FDB keeps pointing at the old one):
+
+   **K8s side — what Flannel is currently advertising:**
+   ```bash
+   # VTEP MAC per node, straight from the annotation CIS reads
+   kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.flannel\.alpha\.coreos\.com/backend-data}{"\n"}{end}'
+
+   # Cross-check on the node itself
+   ip -d link show flannel.1
+   bridge fdb show dev flannel.1
+   ```
+   The `VtepMAC` field in `backend-data` is the source of truth — CIS reads it from the node annotation and pushes it to BIG-IP.
+
+   **BIG-IP side — what CIS actually wrote into the tunnel:**
+   ```
+   tmsh show net fdb tunnel flannel_vxlan
+   ```
+   For each node, the MAC in BIG-IP's FDB must match the `VtepMAC` in that node's annotation. If they don't match, CIS hasn't re-synced after the AWS-side change — force it:
+   ```bash
+   kubectl rollout restart deployment/k8s-bigip-ctlr -n kube-system
+   kubectl logs -n kube-system -l app=k8s-bigip-ctlr --tail=100 | grep -iE 'fdb|flannel|vtep'
+   ```
+   Re-run `tmsh show net fdb tunnel flannel_vxlan` after the restart — MACs should now match and pool members should turn green.
+
+4. **Verify the self-IP on the tunnel is in the pod CIDR range:**
    ```
    tmsh list net self | grep -A3 flannel
    ```
    Self-IP must be on the Flannel subnet (e.g., `10.244.20.1/16`) — not the node network.
 
-4. **Health monitor hitting the wrong port:**
+5. **Health monitor hitting the wrong port:**
    - **Mode A:** monitor should target the app's containerPort (e.g., `8080`), not the Service port.
    - **Mode B:** monitor should target the NGINX IC pod's port (`80`/`443`), not the IngressLink VS port. Check the IngressLink CR's `monitor` block.
 
-5. **NetworkPolicy or pod-level firewall:**
+6. **NetworkPolicy or pod-level firewall:**
    ```bash
    kubectl get networkpolicy -A
    ```
@@ -620,4 +644,4 @@ This is the most common "it looks deployed but traffic fails" scenario. CIS auth
 ping <pod-ip>          # L3 reachability via VXLAN
 curl <pod-ip>:<port>   # L4/L7 reachability (mimics the monitor)
 ```
-If ping fails → tunnel/FDB problem (step 2–3). If ping works but curl fails → monitor port or NetworkPolicy (step 4–5).
+If ping fails → tunnel/FDB/MAC mismatch (steps 2–4). If ping works but curl fails → monitor port or NetworkPolicy (steps 5–6).
