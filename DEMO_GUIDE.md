@@ -576,3 +576,48 @@ kubectl delete -f manifests/gslb/externaldns-tea.yaml 2>/dev/null
 | WAF not blocking | Check BIG-IP policy enforcement mode (Transparent vs Blocking) |
 | NGINX shows BIG-IP IP, not client IP | Verify Proxy Protocol iRule and `nginx-config-proxy-protocol.yaml` |
 | AS3 partition not appearing | Check ConfigMap labels: `f5type: virtual-server`, `as3: "true"` |
+
+### Pool members showing DOWN (but CIS successfully pushed config)
+
+This is the most common "it looks deployed but traffic fails" scenario. CIS authenticated to BIG-IP and created the pool — you can see the member IPs in the GUI — but every member is red. The config plane worked; the data plane can't reach the pods.
+
+**What it means:** BIG-IP cannot route to the pod CIDR. In this lab both modes use CIS in ClusterIP mode, so BIG-IP must join the Flannel VXLAN overlay to talk directly to pod IPs (Mode A = app pod IPs, Mode B = NGINX IC pod IPs).
+
+**Checks — run in this order:**
+
+1. **Confirm CIS actually pushed members** (rules out a config-plane issue):
+   ```bash
+   kubectl logs -n kube-system -l app=k8s-bigip-ctlr --tail=100 | grep -iE 'post|as3|error'
+   ```
+   If you see `[AS3] posting... success`, the control plane is fine — the problem is network reachability.
+
+2. **Check the Flannel VXLAN tunnel on BIG-IP** (this is the #1 cause in this lab):
+   ```
+   tmsh show net tunnels tunnel flannel_vxlan all-properties
+   tmsh show net fdb tunnel flannel_vxlan
+   tmsh show net arp | grep <pod-cidr>
+   ```
+   Empty FDB / no ARP entries for the pod CIDR means BIG-IP never joined the overlay. CIS writes FDB entries via the k8s API — check the CIS deployment args for `--flannel-name=fl-vxlan` and a matching `net tunnel` on BIG-IP.
+
+3. **Verify the self-IP on the tunnel is in the pod CIDR range:**
+   ```
+   tmsh list net self | grep -A3 flannel
+   ```
+   Self-IP must be on the Flannel subnet (e.g., `10.244.20.1/16`) — not the node network.
+
+4. **Health monitor hitting the wrong port:**
+   - **Mode A:** monitor should target the app's containerPort (e.g., `8080`), not the Service port.
+   - **Mode B:** monitor should target the NGINX IC pod's port (`80`/`443`), not the IngressLink VS port. Check the IngressLink CR's `monitor` block.
+
+5. **NetworkPolicy or pod-level firewall:**
+   ```bash
+   kubectl get networkpolicy -A
+   ```
+   Any policy that doesn't allow-list the BIG-IP self-IP on the VXLAN will silently drop health checks.
+
+**Quick sanity test from BIG-IP shell:**
+```
+ping <pod-ip>          # L3 reachability via VXLAN
+curl <pod-ip>:<port>   # L4/L7 reachability (mimics the monitor)
+```
+If ping fails → tunnel/FDB problem (step 2–3). If ping works but curl fails → monitor port or NetworkPolicy (step 4–5).
