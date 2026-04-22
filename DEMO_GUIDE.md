@@ -599,7 +599,7 @@ This is the most common "it looks deployed but traffic fails" scenario. CIS auth
    ```
    Empty FDB / no ARP entries for the pod CIDR means BIG-IP never joined the overlay. CIS writes FDB entries via the k8s API — check the CIS deployment args for `--flannel-name=fl-vxlan` and a matching `net tunnel` on BIG-IP.
 
-3. **Compare VTEP MACs on both sides of the tunnel** (critical in AWS — instance reboots/replacements regenerate the Flannel VTEP MAC, and BIG-IP's FDB keeps pointing at the old one):
+3. **Compare VTEP MACs on both sides of the tunnel** (critical in AWS — reboots/replacements regenerate Flannel VTEP MACs, and the stale side keeps pointing at the old one). There are **two independent drift cases**, with different fixes — check both:
 
    **K8s side — what Flannel is currently advertising:**
    ```bash
@@ -610,18 +610,34 @@ This is the most common "it looks deployed but traffic fails" scenario. CIS auth
    ip -d link show flannel.1
    bridge fdb show dev flannel.1
    ```
-   The `VtepMAC` field in `backend-data` is the source of truth — CIS reads it from the node annotation and pushes it to BIG-IP.
+   The `VtepMAC` field in `backend-data` is the source of truth for *worker* nodes — CIS reads it from the annotation and pushes it to BIG-IP. For the `bigip1` fake node, the annotation is what *workers* use to reach BIG-IP, so it must match BIG-IP's actual tunnel MAC.
 
-   **BIG-IP side — what CIS actually wrote into the tunnel:**
+   **BIG-IP side — what's actually in the tunnel:**
    ```
+   # FDB: one entry per worker node
    tmsh show net fdb tunnel flannel_vxlan
+
+   # Tunnel's own MAC (the BIG-IP side of the VXLAN)
+   tmsh show net tunnels tunnel flannel_vxlan all-properties | grep -iE 'mac|discard'
    ```
-   For each node, the MAC in BIG-IP's FDB must match the `VtepMAC` in that node's annotation. If they don't match, CIS hasn't re-synced after the AWS-side change — force it:
+
+   **Case 3a — Worker node VTEP drift (worker rebooted/replaced):**
+   The MAC in BIG-IP's FDB for that node no longer matches the `VtepMAC` in its annotation. CIS hasn't re-synced after the AWS-side change — force it:
    ```bash
    kubectl rollout restart deployment/k8s-bigip-ctlr -n kube-system
    kubectl logs -n kube-system -l app=k8s-bigip-ctlr --tail=100 | grep -iE 'fdb|flannel|vtep'
    ```
    Re-run `tmsh show net fdb tunnel flannel_vxlan` after the restart — MACs should now match and pool members should turn green.
+
+   **Case 3b — BIG-IP VTEP drift (BIG-IP rebooted):**
+   BIG-IP's `flannel_vxlan` tunnel MAC (from `tmsh show net tunnels ...`) doesn't match the `VtepMAC` in the `bigip1` node annotation. Workers encapsulate return traffic with the stale MAC; BIG-IP decaps, sees a frame for a MAC that isn't its tunnel, and drops it — you'll see a climbing **Incoming Discard Packets** counter on the tunnel. CIS does **not** manage the `bigip1` annotation, so restarting CIS won't help. Re-annotate manually with the current tunnel MAC:
+   ```bash
+   # Use the MAC from: tmsh show net tunnels tunnel flannel_vxlan all-properties
+   kubectl annotate node bigip1 \
+     flannel.alpha.coreos.com/backend-data='{"VtepMAC":"<current-bigip-tunnel-mac>"}' \
+     --overwrite
+   ```
+   Incoming discards should stop climbing immediately and pool members should go green.
 
 4. **Verify the self-IP on the tunnel is in the pod CIDR range:**
    ```
