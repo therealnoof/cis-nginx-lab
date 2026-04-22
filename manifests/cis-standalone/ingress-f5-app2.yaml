@@ -1,0 +1,57 @@
+# ============================================================
+# F5 CIS Ingress Resource — Second App (Standalone Mode)
+# ------------------------------------------------------------
+# This is the ANNOTATIONS-based alternative to
+# as3-configmap-app2.yaml. Instead of adding a second
+# Application block to an AS3 ConfigMap, DevOps deploys a
+# second Ingress with its own F5 annotations — one Ingress
+# per app/VIP.
+#
+# Reuses the SAME BIG-IP VIP as App 1 (10.1.20.10) but on a
+# different port (8081), matching the AS3 path so the same
+# curl commands work for either option.
+#
+# Choose ONE approach per app:
+#   - AS3 ConfigMap (as3-configmap-app2.yaml)
+#   - OR this F5 Ingress (ingress-f5-app2.yaml)
+#   Don't use both for the same app — they'll conflict.
+#
+# Assumes the F5 IngressClass from ingress-f5.yaml is already
+# applied (App 1's Ingress creates it).
+#
+# *** EDIT virtual-server.f5.com/ip FOR YOUR BIG-IP VIP ***
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: f5-hello-world-ingress-2
+  namespace: default
+  annotations:
+    # F5 CIS annotations — tell CIS how to configure BIG-IP
+    virtual-server.f5.com/partition: "kubernetes"      # BIG-IP partition
+    virtual-server.f5.com/ip: "10.1.20.10"             # ← Same VIP as App 1
+    virtual-server.f5.com/http-port: "8081"            # ← Different port from App 1 (80)
+    virtual-server.f5.com/ssl-redirect: "false"        # No HTTPS redirect (lab)
+    virtual-server.f5.com/balance: "round-robin"       # Load balancing method
+    virtual-server.f5.com/health: |
+      [
+        {
+          "path":     "/",
+          "send":     "HTTP GET /",
+          "interval": 5,
+          "timeout":  10
+        }
+      ]
+spec:
+  ingressClassName: f5                 # Must match the F5 IngressClass from ingress-f5.yaml
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: f5-hello-world-web2    # Points at App 2's Service
+                port:
+                  number: 8080

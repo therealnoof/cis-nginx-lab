@@ -31,6 +31,7 @@ Run these commands before starting the demo to ensure a clean state:
 cd /home/ubuntu/cis-nginx-lab
 
 # Delete any existing apps and configs
+kubectl delete -f manifests/cis-standalone/ingress-f5-app2.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/ingress-f5.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/as3-configmap-app2.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/as3-configmap.yaml 2>/dev/null
@@ -148,10 +149,13 @@ kubectl scale deployment f5-hello-world-web --replicas=2
 
 **Who:** DevOps (terminal)
 
-> "Now I need to deploy a second app. Watch what's required — I can't just deploy a Deployment and Service. I need to update the AS3 declaration with a new Application block, a new pool, and a new port. DevOps has to know BIG-IP internals."
+> "Now I need to deploy a second app. Watch what's required — I can't just deploy a Deployment and Service and be done. Whichever path I used for App 1, I have to repeat per-app BIG-IP config for App 2. DevOps has to know BIG-IP internals either way."
 
+Use the **same option you chose in Demo A2** — don't mix AS3 and annotations for the same app.
+
+**Option 1 — AS3 ConfigMap:**
 ```bash
-# Deploy the second app
+# Deploy the second app's Service + Deployment (with AS3 labels)
 kubectl apply -f manifests/cis-standalone/app2-service-as3.yaml
 
 # Show it's running
@@ -163,8 +167,24 @@ kubectl get pods -l app=f5-hello-world-2
 kubectl apply -f manifests/cis-standalone/as3-configmap-app2.yaml
 ```
 
+**Option 2 — F5 Ingress Annotations:**
+```bash
+# Deploy the second app's Service + Deployment
+# (AS3 labels on the Service are ignored when using annotations — harmless)
+kubectl apply -f manifests/cis-standalone/app2-service-as3.yaml
+
+# Show it's running
+kubectl get svc f5-hello-world-web2
+kubectl get pods -l app=f5-hello-world-2
+
+# Deploy a second Ingress with F5 annotations for the new VIP/port
+kubectl apply -f manifests/cis-standalone/ingress-f5-app2.yaml
+```
+
 **Show on BIG-IP:**
-1. **Local Traffic → Virtual Servers** (in `AS3` partition) — now TWO VS entries
+1. **Local Traffic → Virtual Servers** — now TWO VS entries
+   - AS3 ConfigMap: check the `AS3` partition
+   - F5 Ingress: check the `kubernetes` partition
 2. App 1 on port 80, App 2 on port 8081
 3. Each has its own pool with its own pod IPs
 
@@ -177,7 +197,7 @@ curl -s http://10.1.20.10
 curl -s http://10.1.20.10:8081
 ```
 
-> "It works, but look at what I had to do — create a new Service with specific AS3 labels, update the AS3 ConfigMap JSON to add a new Application block, pick a new port. DevOps had to know about AS3 tenants, pool names, and BIG-IP port allocation. That doesn't scale."
+> "It works, but look at what I had to do. With AS3, I rewrote the ConfigMap JSON to add a second Application block, picked a new pool name and port. With annotations, I wrote a second Ingress with F5-specific annotations and hand-picked the VIP and port. Either way DevOps owns BIG-IP addressing and has to understand F5's schema. That doesn't scale to 50 microservices."
 
 ---
 
