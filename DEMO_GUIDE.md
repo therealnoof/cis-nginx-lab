@@ -31,6 +31,8 @@ Run these commands before starting the demo to ensure a clean state:
 cd /home/ubuntu/cis-nginx-lab
 
 # Delete any existing apps and configs
+kubectl delete -f manifests/cis-standalone/ingress-f5-sharedport-app2.yaml 2>/dev/null
+kubectl delete -f manifests/cis-standalone/ingress-f5-sharedport-app1.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/ingress-f5-app2.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/ingress-f5.yaml 2>/dev/null
 kubectl delete -f manifests/cis-standalone/as3-configmap-app2.yaml 2>/dev/null
@@ -167,7 +169,7 @@ kubectl get pods -l app=f5-hello-world-2
 kubectl apply -f manifests/cis-standalone/as3-configmap-app2.yaml
 ```
 
-**Option 2 — F5 Ingress Annotations:**
+**Option 2 — F5 Ingress Annotations (different port per app):**
 ```bash
 # Deploy the second app's Service + Deployment
 # (AS3 labels on the Service are ignored when using annotations — harmless)
@@ -181,14 +183,48 @@ kubectl get pods -l app=f5-hello-world-2
 kubectl apply -f manifests/cis-standalone/ingress-f5-app2.yaml
 ```
 
+Produces TWO separate BIG-IP VS entries (one per port): App 1 on 10.1.20.10:80, App 2 on 10.1.20.10:8081.
+
+**Option 3 — F5 Ingress Annotations (shared VIP + shared port, host-routed):**
+
+If both apps must listen on the same port (e.g., both on 80), CIS can group multiple Ingresses that share `virtual-server.f5.com/ip` + `http-port` into a **single** BIG-IP VS with an LTM traffic policy that routes by Host header (`spec.rules[].host`).
+
+```bash
+# The A2 catch-all Ingress (ingress-f5.yaml) has no host — it would
+# swallow all traffic on VIP:80 and starve App 2. Replace it with the
+# host-routed pair.
+kubectl delete -f manifests/cis-standalone/ingress-f5.yaml 2>/dev/null
+
+# Deploy App 2's Service + Deployment (if not already running)
+kubectl apply -f manifests/cis-standalone/app2-service-as3.yaml
+
+# Apply the host-routed Ingress pair — both on VIP:80
+kubectl apply -f manifests/cis-standalone/ingress-f5-sharedport-app1.yaml
+kubectl apply -f manifests/cis-standalone/ingress-f5-sharedport-app2.yaml
+```
+
+Produces ONE BIG-IP VS on 10.1.20.10:80, backed by two pools. Traffic policy on the VS picks the pool based on Host header.
+
 **Show on BIG-IP:**
+1. **Local Traffic → Virtual Servers** — in the `kubernetes` partition
+   - One VS for the shared-port case (Option 3)
+   - **Policies** tab on that VS — you can see the Host → pool rules CIS generated
+2. **Local Traffic → Pools** — one pool per app, each with its own pod IPs
+
+**Test (no DNS needed — override Host header):**
+```bash
+curl -s -H 'Host: app1.lab.local' http://10.1.20.10
+curl -s -H 'Host: app2.lab.local' http://10.1.20.10
+```
+
+**Show on BIG-IP (Options 1 and 2):**
 1. **Local Traffic → Virtual Servers** — now TWO VS entries
    - AS3 ConfigMap: check the `AS3` partition
    - F5 Ingress: check the `kubernetes` partition
 2. App 1 on port 80, App 2 on port 8081
 3. Each has its own pool with its own pod IPs
 
-**Test both:**
+**Test (Options 1 and 2):**
 ```bash
 # App 1 — port 80
 curl -s http://10.1.20.10
@@ -197,7 +233,7 @@ curl -s http://10.1.20.10
 curl -s http://10.1.20.10:8081
 ```
 
-> "It works, but look at what I had to do. With AS3, I rewrote the ConfigMap JSON to add a second Application block, picked a new pool name and port. With annotations, I wrote a second Ingress with F5-specific annotations and hand-picked the VIP and port. Either way DevOps owns BIG-IP addressing and has to understand F5's schema. That doesn't scale to 50 microservices."
+> "It works, but look at what I had to do. With AS3, I rewrote the ConfigMap JSON to add a second Application block, picked a new pool name and port. With annotations on separate ports, I wrote a second Ingress and hand-picked the VIP and port. With annotations on a shared port, I had to delete App 1's catch-all Ingress, add hostnames to both, and make sure every VS-level annotation agreed across both Ingresses. Every path has DevOps owning BIG-IP addressing, port/host design, and F5's annotation schema. That doesn't scale to 50 microservices — and hand-rolling host-based fan-out is exactly what NGINX IC does for you in Mode B."
 
 ---
 

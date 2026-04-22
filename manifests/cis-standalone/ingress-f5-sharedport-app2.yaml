@@ -1,0 +1,50 @@
+# ============================================================
+# F5 CIS Ingress — App 2, Shared-Port Variant (Standalone Mode)
+# ------------------------------------------------------------
+# Companion to ingress-f5-sharedport-app1.yaml. Both Ingresses
+# share VIP 10.1.20.10:80 and CIS groups them into one BIG-IP
+# VS with a Host-header traffic policy.
+#
+# VS-level annotations MUST match ingress-f5-sharedport-app1.yaml
+# (partition, balance, ssl-redirect, health) — disagreement is
+# last-writer-wins and flaky.
+#
+# Test without DNS:
+#   curl -H 'Host: app2.lab.local' http://10.1.20.10
+#
+# *** EDIT virtual-server.f5.com/ip FOR YOUR BIG-IP VIP ***
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: f5-hello-world-ingress-sharedport-2
+  namespace: default
+  annotations:
+    virtual-server.f5.com/partition: "kubernetes"
+    virtual-server.f5.com/ip: "10.1.20.10"             # ← Same VIP as App 1
+    virtual-server.f5.com/http-port: "80"              # ← Same port as App 1
+    virtual-server.f5.com/ssl-redirect: "false"
+    virtual-server.f5.com/balance: "round-robin"
+    virtual-server.f5.com/health: |
+      [
+        {
+          "path":     "/",
+          "send":     "HTTP GET /",
+          "interval": 5,
+          "timeout":  10
+        }
+      ]
+spec:
+  ingressClassName: f5
+  rules:
+    - host: app2.lab.local                 # ← Different host, same VIP:port
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: f5-hello-world-web2
+                port:
+                  number: 8080

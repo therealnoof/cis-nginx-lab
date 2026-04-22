@@ -1,0 +1,62 @@
+# ============================================================
+# F5 CIS Ingress — App 1, Shared-Port Variant (Standalone Mode)
+# ------------------------------------------------------------
+# Alternative to ingress-f5.yaml for demos where App 1 and
+# App 2 must share the SAME BIG-IP VIP *and* the SAME port
+# (e.g., both on port 80). CIS groups Ingress resources that
+# share virtual-server.f5.com/ip + http-port into a single
+# BIG-IP VS and builds an LTM traffic policy that routes by
+# Host header using spec.rules[].host.
+#
+# Key difference vs ingress-f5.yaml:
+#   - adds spec.rules[].host = "app1.lab.local"
+#   - ingress-f5.yaml has no host (catch-all on VIP:80), which
+#     would swallow all traffic and prevent App 2 from matching
+#
+# Pair this file with ingress-f5-sharedport-app2.yaml. Don't
+# mix with ingress-f5.yaml / ingress-f5-app2.yaml — delete
+# those first (they'd conflict on VIP:port).
+#
+# VS-level annotations (partition, balance, health, ssl-redirect)
+# must AGREE across all Ingresses that share this VIP+port.
+# CIS is last-writer-wins on disagreement — keep them identical.
+#
+# Test without DNS:
+#   curl -H 'Host: app1.lab.local' http://10.1.20.10
+#
+# *** EDIT virtual-server.f5.com/ip FOR YOUR BIG-IP VIP ***
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: f5-hello-world-ingress-sharedport-1
+  namespace: default
+  annotations:
+    virtual-server.f5.com/partition: "kubernetes"
+    virtual-server.f5.com/ip: "10.1.20.10"             # ← Shared VIP
+    virtual-server.f5.com/http-port: "80"              # ← Shared port
+    virtual-server.f5.com/ssl-redirect: "false"
+    virtual-server.f5.com/balance: "round-robin"
+    virtual-server.f5.com/health: |
+      [
+        {
+          "path":     "/",
+          "send":     "HTTP GET /",
+          "interval": 5,
+          "timeout":  10
+        }
+      ]
+spec:
+  ingressClassName: f5
+  rules:
+    - host: app1.lab.local                 # ← Host-based routing (required)
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: f5-hello-world-web
+                port:
+                  number: 8080
