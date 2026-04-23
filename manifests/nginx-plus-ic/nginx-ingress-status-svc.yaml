@@ -1,0 +1,38 @@
+# ============================================================
+# NGINX Plus IC Status / API — NodePort Service
+# ------------------------------------------------------------
+# Separate Service (type NodePort) that exposes ONLY the
+# NGINX Plus status port (8080). Kept separate from the
+# data-plane Service (nginx-ingress-clusterip-svc.yaml) so:
+#   - BIG-IP's IngressLink pool never targets the status port
+#   - You can delete/restrict this one without touching traffic
+#
+# Access from a browser (outside the cluster):
+#   http://<any-worker-node-public-IP>:30808/dashboard.html
+#   http://<any-worker-node-public-IP>:30808/api/9/http/upstreams
+#
+# Requires the matching security group rule on the EC2 node
+# to allow inbound TCP 30808 from your client.
+#
+# Paired with:
+#   controller.nginxStatus in nginx-plus-ic-values.yaml
+# ============================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ingress-status
+  namespace: nginx-ingress
+  labels:
+    app: nginx-ingress
+    role: status                       # Makes it easy to grep/select separately
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: nginx-ingress   # Must match NGINX IC pod labels
+  ports:
+    - name: status
+      port: 8080                       # In-cluster port
+      targetPort: 8080                 # Matches nginxStatus.port in values file
+      nodePort: 30808                  # Fixed NodePort so the URL is stable
+      protocol: TCP

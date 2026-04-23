@@ -58,3 +58,28 @@ controller:
   # Logging — increase to debug if troubleshooting routing
   # ---------------------------------------------------------
   logLevel: "info"                     # Options: info, debug, warn, error
+
+  # ---------------------------------------------------------
+  # NGINX Plus Status / API (dashboard + /api JSON)
+  # ---------------------------------------------------------
+  # Because controller.nginxplus is true above, this exposes
+  # the full NGINX Plus API and live dashboard on the status
+  # port. Useful for showing upstream health, request rates,
+  # SSL stats, cache, etc.
+  #
+  # Endpoints served on the status port:
+  #   /dashboard.html     — interactive live dashboard (browser)
+  #   /api/9/             — JSON API root (version-prefixed)
+  #   /api/9/http/upstreams
+  #   /api/9/http/server_zones
+  #   /api/9/http/location_zones
+  #   /nginx_status       — legacy stub status (plaintext)
+  #
+  # allowCidrs controls who can reach the port. 0.0.0.0/0 is
+  # fine for a lab — LOCK THIS DOWN before anything prod-like,
+  # the API reveals upstream topology and live telemetry.
+  # ---------------------------------------------------------
+  nginxStatus:
+    enable: true
+    port: 8080
+    allowCidrs: "0.0.0.0/0"            # Lab only — restrict in prod
