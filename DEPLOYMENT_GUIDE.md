@@ -408,7 +408,7 @@ On BIG-IP GUI:
 - **DNS → GSLB → Wide IPs** → `coffee.example.com` appears.
 - Click in → **Pools** → the GTM pool contains `SiteB_Server`, which advertises the per-app VS above.
 
-> **Mode B traffic path caveat:** clients that resolve `coffee.example.com` via GSLB will hit the per-app VS at its dedicated VIP, bypassing NGINX IC. That's fine for a GSLB demo (the story is "CIS auto-creates Wide IPs"), just know the demo path is **not** the IngressLink path for that one hostname.
+> **Mode B traffic path:** the per-app VS is a second BIG-IP entry point into the same data plane — its pool targets the NGINX IC Service, not the app pods directly. GSLB-resolved clients still traverse NGINX IC (Host-based routing to `coffee-svc`), just via a different VIP than IngressLink. If you re-enable proxy-protocol later (for WAF / client-IP demos), this VS will need a matching iRule or NGINX IC will reset its connections.
 
 Test DNS resolution from any host that can reach the listener IP:
 ```bash

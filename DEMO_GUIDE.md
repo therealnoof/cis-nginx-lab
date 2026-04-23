@@ -553,7 +553,7 @@ kubectl apply -f manifests/gslb/externaldns-coffee-modeB.yaml
 
 kubectl get virtualserver,externaldns -n default
 ```
-> **Mode B traffic caveat:** GSLB-resolved clients hit the per-app VS directly and bypass NGINX IC for that hostname. For a GSLB demo this is fine — the point is CIS auto-creating the Wide IP.
+> **Mode B traffic path:** the per-app VS pool targets the NGINX IC Service, so GSLB-resolved requests traverse NGINX IC the same way IngressLink requests do — just via a different BIG-IP VIP. Assumes proxy-protocol is disabled on NGINX IC; if you re-enable it for WAF demos, this VS needs a matching iRule.
 
 **Show on BIG-IP DNS:**
 1. **DNS → GSLB → Wide IPs** — `coffee.example.com` appeared!

@@ -4,20 +4,26 @@
 # CIS in custom-resource-mode only watches CRDs, not standard
 # Ingresses. For ExternalDNS to bind a Wide IP to an app, CIS
 # needs a VirtualServer CRD whose `host` matches the
-# ExternalDNS `domainName`. IngressLink alone doesn't expose
-# per-app hostnames to CIS — that's why the standard coffee
-# Ingress didn't work for GSLB.
+# ExternalDNS `domainName` — IngressLink alone doesn't expose
+# per-app hostnames to CIS.
 #
-# This CRD creates a DEDICATED BIG-IP LTM virtual server for
-# coffee.example.com, SEPARATE from the IngressLink VSes:
+# This CRD gives GSLB its hostname anchor WITHOUT bypassing
+# NGINX IC. The pool points at the NGINX IC Service, so the
+# GSLB-resolved VS is just a SECOND BIG-IP entry point into
+# the SAME data plane as IngressLink:
 #
-#   IngressLink VSes  → NGINX IC pool  → all apps (unchanged)
-#   This VS           → coffee-svc     → coffee pods directly
+#   IngressLink VS    : 10.1.20.10:443 → NGINX IC pool → apps
+#   This VS (GSLB)    : 10.1.20.60:80  → NGINX IC pool → apps
 #
-# Clients resolving coffee.example.com via GSLB will hit
-# THIS VS (at virtualServerAddress below), bypassing NGINX IC.
-# That's acceptable for a GSLB demo — the point is to show
-# the Wide IP automation, not the traffic path through NGINX.
+# Traffic hitting either VIP goes through NGINX IC's Ingress
+# routing. NGINX IC matches Host: coffee.example.com and
+# proxies to coffee-svc internally — same path, different
+# front door.
+#
+# IMPORTANT: assumes proxy-protocol is DISABLED on NGINX IC
+# (see nginx-config-proxy-protocol.yaml). If you re-enable
+# proxy-protocol for WAF/client-IP demos, this VS will need
+# a matching iRule or NGINX IC will reset the connection.
 #
 # *** EDIT virtualServerAddress FOR A FREE VIP ON YOUR BIG-IP ***
 # ============================================================
@@ -40,18 +46,23 @@ spec:
   # BIG-IP's client-facing subnet (NOT the IngressLink VIP).
   virtualServerAddress: "10.1.20.60"   # ← Your free BIG-IP VIP
 
-  # HTTP listener port (no TLS for the lab demo)
+  # HTTP listener port (lab demo — for production, add a TLSProfile
+  # reference and set virtualServerHTTPSPort to 443 to match the
+  # IngressLink VS)
   virtualServerHTTPPort: 80
 
-  # Pool definition — CIS creates the BIG-IP pool and populates
-  # it with coffee pod IPs via the Flannel VXLAN overlay
+  # Pool definition — NGINX IC is the pool target. CIS populates
+  # the pool with NGINX IC pod IPs via the Flannel VXLAN overlay,
+  # same way IngressLink does. NGINX IC then matches the Host
+  # header and proxies internally to coffee-svc.
   pools:
     - path: /
-      service: coffee-svc              # ← matches Service in app1-coffee.yaml
-      servicePort: 80                  # ← matches Service port (not containerPort)
+      service: nginx-ingress-controller   # NGINX IC Service (verify name: kubectl get svc -n nginx-ingress)
+      serviceNamespace: nginx-ingress     # cross-namespace reference — CIS must also watch this namespace
+      servicePort: 80                     # NGINX IC HTTP listener (443 would require TLS setup on this VS)
       monitor:
         type: http
         send: "GET / HTTP/1.1\r\nHost: coffee.example.com\r\n\r\n"
-        recv: ""
+        recv: ""                          # empty recv matches any response — NGINX IC returns 404 if coffee Ingress isn't deployed
         interval: 10
         timeout: 31
