@@ -507,7 +507,7 @@ kubectl patch il vs-ingresslink -n nginx-ingress \
 
 > **Story:** "BIG-IP DNS provides global server load balancing across sites. CIS automates the Wide IP and GSLB pool creation — DevOps deploys an ExternalDNS CRD and BIG-IP DNS starts answering queries."
 
-> **Pre-requisite:** GSLB requires BIG-IP DNS (GTM) provisioned, with Data Centers, GTM Servers, and a DNS Listener configured. CIS deployments must include `--gtm-bigip-url` flags. See the Deployment Guide for setup.
+> **Pre-requisite:** GSLB requires BIG-IP DNS (GTM) provisioned, with Data Centers, GTM Servers, and a DNS Listener configured. CIS deployments must include `--gtm-bigip-url` flags. See [Step 3 in DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md#step-3-optional-gslb-setup-for-externaldns-demos) for the click-by-click setup.
 
 ---
 

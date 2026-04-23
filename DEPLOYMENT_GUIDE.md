@@ -17,7 +17,8 @@
 
 1. [Build the Kubernetes Cluster](#step-1-build-the-kubernetes-cluster)
 2. [Prepare BIG-IP](#step-2-prepare-big-ip)
-3. [Troubleshooting](#troubleshooting)
+3. [(Optional) GSLB Setup for ExternalDNS Demos](#step-3-optional-gslb-setup-for-externaldns-demos)
+4. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -281,6 +282,121 @@ kubectl apply -f manifests/cis/cis-rbac.yaml
 | **Best for** | Simple apps, quick demo | Microservices, two-persona demo |
 | **Extra components** | None | NGINX Plus IC |
 | **Time to build** | ~15 min | ~30 min |
+
+---
+
+## Step 3 (Optional): GSLB Setup for ExternalDNS Demos
+
+> **When to follow this:** You've completed Mode A and/or Mode B and want to run Part 3 (GSLB with ExternalDNS) from the Demo Guide. Skip if you're not demoing GSLB.
+>
+> **What this covers:** BIG-IP DNS (GTM) side configuration — which is clicks in the BIG-IP GUI — plus a three-line uncomment in the CIS deployment manifest to point CIS at the GTM.
+
+### 3a. Provision BIG-IP DNS (GTM) Module
+
+On the BIG-IP you want to act as the GTM:
+
+- **System → Resource Provisioning** → set **DNS** to **Nominal** → **Submit** → the BIG-IP reboots.
+
+> **Lab shortcut:** GTM can run on the same BIG-IP as LTM. The modules coexist. For a two-site demo, pick one BIG-IP (Mode A's or Mode B's) to also act as the GTM — the other BIG-IP only needs LTM.
+
+### 3b. Create Data Centers
+
+A Data Center is a logical container representing a physical site. Create one per LTM site you want in GSLB.
+
+On the GTM BIG-IP:
+
+- **DNS → GSLB → Data Centers → Create**
+  - Name: `SiteA_DC`
+  - Location / description: optional
+- Repeat for `SiteB_DC`.
+
+### 3c. Create GTM Servers
+
+A GTM Server represents a BIG-IP LTM endpoint that GTM will health-check and use as a pool member.
+
+- **DNS → GSLB → Servers → Create**
+  - Name: `SiteA_Server` — **must match `dataServerName` in `manifests/gslb/externaldns-coffee.yaml`**
+  - Product: `BIG-IP System`
+  - Data Center: `SiteA_DC`
+  - Devices → Add: the IP address of the Mode A LTM (any self-IP that GTM can reach)
+  - Health Monitors: `bigip` (standard)
+- Repeat for `SiteB_Server` → `SiteB_DC` → Mode B LTM IP.
+
+> If you use names other than `SiteA_Server` / `SiteB_Server`, edit the `dataServerName` fields in the `manifests/gslb/externaldns-*.yaml` files to match — the names must line up exactly, with the `/Common/` partition prefix.
+
+### 3d. Configure a DNS Listener
+
+Clients hit the DNS Listener to resolve names. Without one, BIG-IP DNS answers nothing.
+
+- **DNS → Delivery → Listeners → Create**
+  - Name: `gslb_listener`
+  - Destination: a free IP on your client-facing subnet (e.g., `10.1.20.53`)
+  - Port: `53`
+  - Service Profile: `dns` (default)
+- Create a second listener for TCP if the GUI splits UDP and TCP (some versions do).
+
+### 3e. Enable GTM Args in the CIS Deployment
+
+CIS needs to know where the GTM BIG-IP lives. Edit your mode's CIS deployment manifest and uncomment the three `--gtm-bigip-*` lines:
+
+- **Mode A:** `manifests/cis-standalone/cis-deployment-standalone.yaml` (around line 74)
+- **Mode B:** `manifests/cis-ingresslink/cis-deployment-ingresslink.yaml` (around line 70)
+
+Before:
+```yaml
+# - "--gtm-bigip-url=https://10.1.1.6"
+# - "--gtm-bigip-username=$(BIGIP_USERNAME)"
+# - "--gtm-bigip-password=$(BIGIP_PASSWORD)"
+```
+
+After (replace with your GTM BIG-IP management IP):
+```yaml
+- "--gtm-bigip-url=https://10.1.1.6"
+- "--gtm-bigip-username=$(BIGIP_USERNAME)"
+- "--gtm-bigip-password=$(BIGIP_PASSWORD)"
+```
+
+The `$(BIGIP_USERNAME)` / `$(BIGIP_PASSWORD)` env vars already resolve from the `bigip-login` secret you created in Step 2f — no extra secret needed when GTM shares the same credentials as LTM. If GTM uses separate credentials, create a second secret (e.g., `bigip-gtm-login`) and wire up additional env vars in the CIS Deployment.
+
+> **Mode A note:** Mode A's CIS deployment also has a comment reminding you that ExternalDNS requires `--custom-resource-mode=true`. Ensure that flag is present (not commented out) before CIS can watch ExternalDNS CRDs.
+
+Apply and restart CIS:
+```bash
+kubectl apply -f manifests/cis-ingresslink/cis-deployment-ingresslink.yaml
+# (or the Mode A path)
+
+kubectl rollout restart deployment/k8s-bigip-ctlr -n kube-system
+kubectl rollout status  deployment/k8s-bigip-ctlr -n kube-system
+```
+
+### 3f. Verify CIS Reached GTM
+
+```bash
+kubectl logs -n kube-system -l app=k8s-bigip-ctlr --tail=100 | grep -iE 'gtm|wideip|externaldns'
+```
+
+You should see CIS log successful connection to GTM. Red flags: `401 Unauthorized`, `connection refused`, or repeated `Post https://<gtm-ip>/mgmt/...` errors — those point at credentials, network reach, or the GTM URL being wrong.
+
+### 3g. Deploy a Test ExternalDNS CRD
+
+```bash
+kubectl apply -f manifests/gslb/externaldns-coffee.yaml
+kubectl get externaldns
+```
+
+On the GTM BIG-IP GUI:
+- **DNS → GSLB → Wide IPs** → `coffee.example.com` should appear within seconds.
+- Click in → **Pools** → one pool per GTM Server, each with its LTM VIP as a member and a health status.
+
+Test DNS resolution from any host that can reach the listener IP:
+```bash
+dig @10.1.20.53 coffee.example.com +short
+```
+Returns the LTM VIP(s) per the Wide IP's load balance method.
+
+**Done** — you can now run Part 3 (Demos G1-G5) in `DEMO_GUIDE.md`.
+
+> **Troubleshooting GSLB:** If the Wide IP doesn't appear, CIS logs (step 3f command) are the first place to look. If the Wide IP appears but shows all pool members `down`, GTM can't reach the LTM VIPs — check the GTM Server device IP and network path from GTM to each LTM. If `dig` returns `SERVFAIL` or `NXDOMAIN`, the DNS Listener is misconfigured or not on the expected IP.
 
 ---
 
