@@ -379,24 +379,48 @@ You should see CIS log successful connection to GTM. Red flags: `401 Unauthorize
 
 ### 3g. Deploy a Test ExternalDNS CRD
 
+**Mode A:**
 ```bash
+kubectl apply -f manifests/apps/app1-coffee.yaml       # needs a VS with host=coffee.example.com
 kubectl apply -f manifests/gslb/externaldns-coffee.yaml
 kubectl get externaldns
 ```
+In Mode A, CIS reads the standard `coffee-ingress` and creates a per-app LTM VS with `coffee.example.com` as its hostname. ExternalDNS binds to that VS and pushes the Wide IP.
 
-On the GTM BIG-IP GUI:
-- **DNS → GSLB → Wide IPs** → `coffee.example.com` should appear within seconds.
-- Click in → **Pools** → one pool per GTM Server, each with its LTM VIP as a member and a health status.
+**Mode B:** CIS in Mode B runs with `--custom-resource-mode=true` and does not watch standard Ingresses — it only sees CRDs. IngressLink alone doesn't expose per-app hostnames to CIS, so `externaldns-coffee.yaml` has nothing to bind to. You need a `VirtualServer` CRD that gives CIS a hostname to anchor on:
+
+```bash
+# Coffee app's Deployment + Service (Ingress is present but not used by CIS here)
+kubectl apply -f manifests/apps/app1-coffee.yaml
+
+# VirtualServer CRD — CIS creates a per-app LTM VS at its own VIP
+kubectl apply -f manifests/gslb/virtualserver-coffee-modeB.yaml
+
+# Single-site ExternalDNS that references SiteB_Server only
+kubectl apply -f manifests/gslb/externaldns-coffee-modeB.yaml
+
+kubectl get virtualserver,externaldns
+```
+
+On BIG-IP GUI:
+- **Local Traffic → Virtual Servers** → `coffee.example.com_kubernetes` (or similar — CIS-generated name) appears at the VIP in the VirtualServer CRD, SEPARATE from the IngressLink VSes.
+- **DNS → GSLB → Wide IPs** → `coffee.example.com` appears.
+- Click in → **Pools** → the GTM pool contains `SiteB_Server`, which advertises the per-app VS above.
+
+> **Mode B traffic path caveat:** clients that resolve `coffee.example.com` via GSLB will hit the per-app VS at its dedicated VIP, bypassing NGINX IC. That's fine for a GSLB demo (the story is "CIS auto-creates Wide IPs"), just know the demo path is **not** the IngressLink path for that one hostname.
 
 Test DNS resolution from any host that can reach the listener IP:
 ```bash
 dig @10.1.20.53 coffee.example.com +short
 ```
-Returns the LTM VIP(s) per the Wide IP's load balance method.
+Returns the LTM VIP per the Wide IP's load balance method.
 
 **Done** — you can now run Part 3 (Demos G1-G5) in `DEMO_GUIDE.md`.
 
-> **Troubleshooting GSLB:** If the Wide IP doesn't appear, CIS logs (step 3f command) are the first place to look. If the Wide IP appears but shows all pool members `down`, GTM can't reach the LTM VIPs — check the GTM Server device IP and network path from GTM to each LTM. If `dig` returns `SERVFAIL` or `NXDOMAIN`, the DNS Listener is misconfigured or not on the expected IP.
+> **Troubleshooting GSLB:**
+> - **Wide IP doesn't appear:** CIS logs (step 3f command) are the first place to look. In Mode B, the most common cause is missing VirtualServer CRD — without it, CIS has no hostname to bind the ExternalDNS to and silently no-ops. Check `kubectl get virtualserver` in the same namespace.
+> - **Wide IP exists but pool members show `down`:** GTM can't reach the LTM VIPs. Check the GTM Server's device IP and the network path from the GTM BIG-IP to each LTM.
+> - **`dig` returns `SERVFAIL` or `NXDOMAIN`:** the DNS Listener is misconfigured or not on the expected IP. Verify with `tmsh list ltm virtual | grep dns` on the GTM BIG-IP.
 
 ---
 

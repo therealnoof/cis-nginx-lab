@@ -1,0 +1,43 @@
+# ============================================================
+# ExternalDNS CRD — Coffee Wide IP (Mode B, Single Site)
+# ------------------------------------------------------------
+# Single-site variant of externaldns-coffee.yaml — only the
+# Mode B BIG-IP's GTM Server in the pool. Use this when GSLB
+# is scoped to the Mode B environment only.
+#
+# Prerequisites on Mode B BIG-IP:
+#   - DNS/GTM module provisioned
+#   - Data Center SiteB_DC created
+#   - GTM Server SiteB_Server created (pointing at Mode B LTM)
+#   - DNS Listener on port 53
+#   - VirtualServer CRD from virtualserver-coffee-modeB.yaml
+#     already applied (CIS needs a matching VS to bind to)
+#
+# CIS binds this ExternalDNS to the VS with host=coffee.example.com
+# (the VirtualServer CRD above) and pushes Wide IP config to GTM.
+# ============================================================
+
+apiVersion: cis.f5.com/v1
+kind: ExternalDNS
+metadata:
+  name: coffee-edns
+  namespace: default
+spec:
+  # FQDN for the Wide IP — MUST match VirtualServer's host field
+  domainName: coffee.example.com
+  dnsRecordType: A
+  loadBalanceMethod: round-robin
+
+  pools:
+    # ---------------------------------------------------------
+    # Site B only — Mode B BIG-IP (IngressLink + VirtualServer)
+    # ---------------------------------------------------------
+    - dataServerName: /Common/SiteB_Server   # ← Must match GTM Server name
+      dnsRecordType: A
+      loadBalanceMethod: round-robin
+      monitor:
+        type: http
+        send: "GET / HTTP/1.1\r\nHost: coffee.example.com\r\n\r\n"
+        recv: "200"
+        interval: 10
+        timeout: 31
