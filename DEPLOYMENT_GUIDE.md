@@ -320,7 +320,8 @@ A GTM Server represents a BIG-IP LTM endpoint that GTM will health-check and use
   - Data Center: `SiteA_DC`
   - Devices → Add: the IP address of the Mode A LTM (any self-IP that GTM can reach)
   - Health Monitors: `bigip` (standard)
-- Repeat for `SiteB_Server` → `SiteB_DC` → Mode B LTM IP.
+  - **Configuration dropdown → Advanced → Virtual Server Discovery: `Enabled`** — without this, GTM's VS list stays empty and CIS fails when it tries to put the LTM VS into the GSLB pool. The error looks like `Virtual Server Resource not Available in BIG-IP` in CIS logs.
+- Repeat for `SiteB_Server` → `SiteB_DC` → Mode B LTM IP, with Virtual Server Discovery also enabled.
 
 > If you use names other than `SiteA_Server` / `SiteB_Server`, edit the `dataServerName` fields in the `manifests/gslb/externaldns-*.yaml` files to match — the names must line up exactly, with the `/Common/` partition prefix.
 

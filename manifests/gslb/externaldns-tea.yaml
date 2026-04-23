@@ -13,6 +13,8 @@ kind: ExternalDNS
 metadata:
   name: tea-edns
   namespace: default
+  labels:
+    f5cr: "true"                       # CIS filters CRs by this label — must be present
 spec:
   domainName: tea.example.com
   dnsRecordType: A

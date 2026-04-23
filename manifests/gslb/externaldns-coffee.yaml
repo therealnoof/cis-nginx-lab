@@ -27,6 +27,8 @@ kind: ExternalDNS
 metadata:
   name: coffee-edns
   namespace: default
+  labels:
+    f5cr: "true"                       # CIS filters CRs by this label — must be present
 spec:
   # FQDN for the Wide IP — clients resolve this via BIG-IP DNS
   domainName: coffee.example.com

@@ -264,6 +264,12 @@ cd /home/ubuntu/cis-nginx-lab
 kubectl delete -f manifests/apps/ 2>/dev/null
 kubectl delete -f manifests/waf/waf-policy.yaml 2>/dev/null
 
+# Delete any GSLB resources from a prior Part 3 run
+kubectl delete -f manifests/gslb/externaldns-coffee-modeB.yaml 2>/dev/null
+kubectl delete -f manifests/gslb/externaldns-tea.yaml 2>/dev/null
+kubectl delete -f manifests/gslb/externaldns-coffee.yaml 2>/dev/null
+kubectl delete -f manifests/gslb/virtualserver-coffee-modeB.yaml 2>/dev/null
+
 # Wait for CIS to clean up BIG-IP
 sleep 10
 
@@ -530,16 +536,24 @@ kubectl patch il vs-ingresslink -n nginx-ingress \
 
 > "I need coffee.example.com to resolve globally via BIG-IP DNS. I deploy an ExternalDNS CRD — that's it."
 
+**Mode A:** CIS watches standard Ingresses and has a per-app VS with `host: coffee.example.com` already — just apply the ExternalDNS CRD.
 ```bash
-# Show what we're deploying — a simple YAML with a domain name and pool references
 cat manifests/gslb/externaldns-coffee.yaml
-
-# Deploy it
 kubectl apply -f manifests/gslb/externaldns-coffee.yaml
-
-# Show it's created
 kubectl get externaldns
 ```
+
+**Mode B:** CIS runs in CRD mode and doesn't watch Ingresses. You need a `VirtualServer` CRD to anchor the hostname on a BIG-IP VS, then a single-site ExternalDNS bound to that VS.
+```bash
+# VirtualServer — creates a dedicated per-app VS at 10.1.20.60 (edit the file for your VIP)
+kubectl apply -f manifests/gslb/virtualserver-coffee-modeB.yaml
+
+# ExternalDNS — single-site pool pointing at SiteB_Server
+kubectl apply -f manifests/gslb/externaldns-coffee-modeB.yaml
+
+kubectl get virtualserver,externaldns -n default
+```
+> **Mode B traffic caveat:** GSLB-resolved clients hit the per-app VS directly and bypass NGINX IC for that hostname. For a GSLB demo this is fine — the point is CIS auto-creating the Wide IP.
 
 **Show on BIG-IP DNS:**
 1. **DNS → GSLB → Wide IPs** — `coffee.example.com` appeared!
@@ -598,11 +612,16 @@ dig @10.1.1.4 coffee.example.com A +short
 ### Demo G5: Clean Up GSLB
 
 ```bash
-kubectl delete -f manifests/gslb/externaldns-coffee.yaml
+# Mode A artifacts
+kubectl delete -f manifests/gslb/externaldns-coffee.yaml 2>/dev/null
+
+# Mode B artifacts (VS + single-site ExternalDNS + tea)
+kubectl delete -f manifests/gslb/externaldns-coffee-modeB.yaml 2>/dev/null
+kubectl delete -f manifests/gslb/virtualserver-coffee-modeB.yaml 2>/dev/null
 kubectl delete -f manifests/gslb/externaldns-tea.yaml 2>/dev/null
 ```
 
-**Show on BIG-IP DNS:** Wide IPs are removed automatically.
+**Show on BIG-IP DNS:** Wide IPs are removed automatically. In Mode B the per-app VS at `10.1.20.60` also disappears — GSLB artifacts leave no trace.
 
 ---
 

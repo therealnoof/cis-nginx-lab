@@ -22,6 +22,8 @@ kind: ExternalDNS
 metadata:
   name: coffee-edns
   namespace: default
+  labels:
+    f5cr: "true"                       # CIS filters CRs by this label — must be present
 spec:
   # FQDN for the Wide IP — MUST match VirtualServer's host field
   domainName: coffee.example.com
