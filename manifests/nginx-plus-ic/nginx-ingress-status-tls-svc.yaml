@@ -1,0 +1,42 @@
+# ============================================================
+# NGINX Plus IC — TLS NodePort for Dashboard Access
+# ------------------------------------------------------------
+# Exposes NGINX IC's existing HTTPS listener (port 443) as a
+# NodePort so a browser on an HTTPS-only lab portal can reach
+# the Plus dashboard without hitting BIG-IP.
+#
+# Paired with the Ingress nginx-ingress-status-ingress.yaml,
+# which routes /dashboard.html, /api/, and /nginx_status to
+# the internal status Service on port 8080.
+#
+# NGINX IC's default cert is self-signed — the browser will
+# show a warning; click through for lab use.
+#
+# Access pattern:
+#   https://<any-worker-node-public-IP>:30443/dashboard.html
+#   https://<any-worker-node-public-IP>:30443/api/9/http/upstreams
+#
+# Keep this Service SEPARATE from nginx-ingress-controller
+# (the data-plane ClusterIP that BIG-IP's IngressLink pool
+# targets). BIG-IP must never see this NodePort as a pool
+# member — it only fronts the data plane.
+# ============================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ingress-status-tls
+  namespace: nginx-ingress
+  labels:
+    app: nginx-ingress
+    role: status-tls                   # Different role label from the HTTP status Service
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: nginx-ingress   # Must match NGINX IC pod labels
+  ports:
+    - name: https
+      port: 443                        # In-cluster port
+      targetPort: 443                  # NGINX IC's HTTPS listener (data-plane port)
+      nodePort: 30443                  # Fixed NodePort so the URL is stable
+      protocol: TCP

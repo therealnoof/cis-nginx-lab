@@ -1,0 +1,48 @@
+# ============================================================
+# Ingress — Route NGINX Plus Dashboard + /api Through HTTPS
+# ------------------------------------------------------------
+# NGINX IC handles this Ingress because ingressClassName is
+# "nginx" (see nginx-plus-ic-values.yaml). When a request
+# lands on NGINX IC's HTTPS listener (port 443) with a Host
+# header that doesn't match any other Ingress rule, this
+# catch-all proxies the request to the internal status
+# Service on port 8080 — which is where NGINX Plus serves
+# /dashboard.html, /api/, and /nginx_status.
+#
+# Chain:
+#   Browser → https://<node>:30443/dashboard.html
+#   → NodePort 30443 (Service: nginx-ingress-status-tls)
+#   → NGINX IC pod :443 (TLS termination, self-signed cert)
+#   → this Ingress matches (no host rule = catch-all)
+#   → Service: nginx-ingress-status :8080
+#   → NGINX IC pod :8080 (Plus status listener)
+#   → dashboard / API response
+#
+# Intentional side effect: because this Ingress has no host,
+# any request that reaches NGINX IC with an unmatched Host
+# (including via the BIG-IP VIP) will land on the status
+# page. In a lab, fine — add a specific host here if you
+# want to fence it off.
+# ============================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-ingress-status-dashboard
+  namespace: nginx-ingress
+  annotations:
+    # Optional: disable proxy buffering so live metrics stream
+    # without delay when the dashboard polls /api frequently.
+    nginx.org/proxy-buffering: "false"
+spec:
+  ingressClassName: nginx              # Must match the class created by the Helm chart
+  rules:
+    - http:
+        paths:
+          - path: /                    # Catch everything — dashboard.html loads assets relatively
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-ingress-status   # ClusterIP Service from nginx-ingress-status-svc.yaml
+                port:
+                  number: 8080
