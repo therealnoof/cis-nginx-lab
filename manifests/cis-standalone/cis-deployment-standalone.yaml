@@ -55,7 +55,7 @@ spec:
             # -------------------------------------------------------
             # *** EDIT THESE VALUES FOR YOUR ENVIRONMENT ***
             # -------------------------------------------------------
-            - "--bigip-url=https://10.1.1.4"          # ← BIG-IP mgmt IP
+            - "--bigip-url=https://10.1.1.4"          # ← Mode A BIG-IP mgmt IP
             - "--bigip-partition=kubernetes"           # ← Partition CIS manages
             - "--pool-member-type=cluster"             # Pod IPs via VXLAN
             - "--flannel-name=/Common/flannel_vxlan"       # ← VXLAN tunnel on BIG-IP
@@ -71,7 +71,7 @@ spec:
             # so you'll need to change the flag above from false to true
             # and use VirtualServer CRDs instead of Ingress/AS3
             # -------------------------------------------------------
-            # - "--gtm-bigip-url=https://10.1.1.4"    # ← GTM BIG-IP mgmt IP
+            # - "--gtm-bigip-url=https://10.1.1.4"    # ← GTM BIG-IP (same as LTM for lab)
             # - "--gtm-bigip-username=$(BIGIP_USERNAME)"
             # - "--gtm-bigip-password=$(BIGIP_PASSWORD)"
           resources:
