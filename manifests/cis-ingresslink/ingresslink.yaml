@@ -27,10 +27,12 @@ spec:
   # BIG-IP VIP address — must be routable from clients
   virtualServerAddress: "10.1.20.10"  # ← Your BIG-IP VIP address
 
-  # Proxy Protocol iRule — passes real client IP to NGINX IC
-  # You must create this iRule on BIG-IP first (see DEPLOYMENT_GUIDE.md)
-  iRules:
-    - /Common/proxy_protocol_irule
+  # --- Proxy Protocol iRule (currently DISABLED) ---
+  # Re-enable in tandem with nginx-config-proxy-protocol.yaml when
+  # demoing WAF or real-client-IP features. Must stay in lockstep:
+  # if NGINX isn't expecting PROXY headers, BIG-IP must not send them.
+  # iRules:
+  #   - /Common/proxy_protocol_irule
 
   # Label selector — must match the NGINX IC service/pods
   selector:

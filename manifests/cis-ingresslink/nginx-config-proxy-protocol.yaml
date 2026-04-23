@@ -9,6 +9,18 @@
 # Without this, all requests to NGINX will appear to come
 # from BIG-IP's self-IP, and you lose client IP visibility.
 #
+# STATUS: DISABLED for labs that expose NGINX directly on a
+# NodePort (dashboard/api access) — PROXY-enabled listeners
+# reject non-PROXY connections with TLS resets.
+# The matching iRule on the BIG-IP side (ingresslink.yaml)
+# is also commented out so BIG-IP doesn't send PROXY headers
+# that NGINX no longer understands.
+#
+# To re-enable (for WAF / client-IP demos):
+#   1. Uncomment the three data keys below
+#   2. Uncomment the iRules block in ingresslink.yaml
+#   3. kubectl apply -f both files, rollout restart NGINX IC
+#
 # Apply this AFTER installing NGINX IC via Helm.
 # ============================================================
 
@@ -17,7 +29,8 @@ apiVersion: v1
 metadata:
   name: nginx-ingress                  # Must match the NGINX IC Helm release name
   namespace: nginx-ingress
-data:
-  proxy-protocol: "True"               # Read Proxy Protocol from BIG-IP
-  real-ip-header: "proxy_protocol"      # Use the PP header as the real IP source
-  set-real-ip-from: "0.0.0.0/0"        # Trust all sources (lab — restrict in prod)
+data: {}
+  # --- Re-enable by uncommenting the three keys below ---
+  # proxy-protocol: "True"              # Read Proxy Protocol from BIG-IP
+  # real-ip-header: "proxy_protocol"    # Use the PP header as the real IP source
+  # set-real-ip-from: "0.0.0.0/0"       # Trust all sources (lab — restrict in prod)
